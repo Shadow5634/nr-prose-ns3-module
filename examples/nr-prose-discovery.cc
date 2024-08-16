@@ -73,6 +73,10 @@
 
 #include <iomanip>
 
+#ifdef HAS_NETSIMULYZER
+#include <ns3/netsimulyzer-module.h>
+#endif
+
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("NrProseDiscovery");
@@ -553,6 +557,38 @@ main(int argc, char* argv[])
     }
 
     /*********************** End ProSe configuration ***************************/
+
+    /*********************** Start visualizer hooks ****************************/
+
+#ifdef HAS_NETSIMULYZER
+    std::string outputFileName = "netsimulyzer-prose-discovery.json";
+    auto orchestrator = CreateObject<netsimulyzer::Orchestrator>(outputFileName);
+    // Nodes are stationary and thus no polling required
+    orchestrator->SetAttribute("PollMobility", BooleanValue(false));
+
+    netsimulyzer::NodeConfigurationHelper nodeConfigHelper{orchestrator};
+    nodeConfigHelper.Set("Model", netsimulyzer::models::SMARTPHONE_VALUE);
+    nodeConfigHelper.Set("Scale", DoubleValue(2.0));
+
+    // nodeConfigHelper.Set("HighlightColor",
+    //                 netsimulyzer::OptionalValue<netsimulyzer::Color3>{netsimulyzer::YELLOW});
+    //for (uint32_t i = 0; i < ueVoiceContainer.GetN(); i++)
+    //{
+    //    nodeConfigHelper.Set(
+    //        "Name",
+    //        StringValue("Node " + std::to_string(ueVoiceContainer.Get(i)->GetId())));
+    //    nodeConfigHelper.Install(ueVoiceContainer.Get(i));
+    //}
+
+    //auto area = MakeAreaSurroundingNodes(ueVoiceContainer, orchestrator);
+    //area->SetAttribute("Border", EnumValue(netsimulyzer::RectangularArea::DrawMode::Solid));
+    //area->SetAttribute("BorderColor", netsimulyzer::ORANGE_VALUE);
+
+    //NetSimulyzerProseDirectDiscoveryTracer discoveryTracer;
+    //discoveryTracer.SetUp(discModel, orchestrator, ueVoiceNetDev);
+#endif
+
+    /*********************** End visualizer hooks ******************************/
 
     // Datebase setup
     std::string exampleName = simTag + "-" + "nr-prose-discovery";

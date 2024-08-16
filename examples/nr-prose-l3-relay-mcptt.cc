@@ -769,6 +769,8 @@ main(int argc, char* argv[])
                                 << "]"
                                    " x "
                                 << ry_pos_x << " y " << ry_pos_y);
+
+        std::cout << "relay id: " << std::to_string(relayUeNodes.Get(ryIdx)->GetId()) << std::endl;
         // Remote UEs
         for (uint32_t rmIdx = 0; rmIdx < nRemoteUesPerRelay; ++rmIdx)
         {
@@ -784,6 +786,8 @@ main(int argc, char* argv[])
                                      << "]"
                                         " x "
                                      << rm_pos_x << " y " << rm_pos_y);
+
+            std::cout << "remote id: " << std::to_string(remoteUeNodes.Get(remoteIdx)->GetId()) << std::endl;
         }
     }
 
@@ -1576,6 +1580,7 @@ main(int argc, char* argv[])
 
     // Install MCPTT sever in the IMS node
     serverApps.Add(mcpttServerHelper.Install(imsHelper->GetImsNode()));
+    std::cout << "ImsNode Id: " << std::to_string(imsHelper->GetImsNode()->GetId()) << std::endl;
 
     // Configure IP address of the MCPTT server
     Ptr<psc::McpttServerApp> serverApp = DynamicCast<psc::McpttServerApp>(serverApps.Get(0));
@@ -1929,8 +1934,8 @@ main(int argc, char* argv[])
     Ptr<McpttTraceHelper> mcpttTraceHelper = CreateObject<McpttTraceHelper>();
     mcpttTraceHelper->EnableMsgTraces();
     mcpttTraceHelper->EnableStateMachineTraces();
-    mcpttTraceHelper->EnableMouthToEarLatencyTrace("mcptt-m2e-latency.txt");
-    mcpttTraceHelper->EnableAccessTimeTrace("mcptt-access-time.txt");
+    //mcpttTraceHelper->EnableMouthToEarLatencyTrace("mcptt-m2e-latency.txt");
+    //mcpttTraceHelper->EnableAccessTimeTrace("mcptt-access-time.txt");
 
 #ifdef HAS_NETSIMULYZER
 
@@ -2278,3 +2283,4 @@ main(int argc, char* argv[])
     Simulator::Destroy();
     return 0;
 }
+

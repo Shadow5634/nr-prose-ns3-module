@@ -1,0 +1,42 @@
+
+I] DOUBTS AND CONSIDERATIONS:
+
+  - Check what and how to include necessary files
+
+II] CODE DESIGN
+
+  - All classes (no structs)
+  - SetUp method with int return to highlight success/failure
+    - Takes in the bare-bones parameters to function properly
+    - 1 for success and -1 for failure
+    - 0 if called SetUp again after a succesful setup
+  - All other public methods only run if setup is successful and return status
+    - 1 for success and -1 for failure
+  - Classes link trace sources to sinks by themselves
+    - By private method called LinkTraces
+    - Trace sinks must be private as well
+  - Trace Sinks return immediately on unsuccessful set-up
+  - If possible attach trace sinks to only relevant sources - not all nodes/devices. Only for the ones provided
+    - If possible, trace sinks should abort on invalid parameters (signal user that setup was incorrect)
+    - If not possible, trace sinks will skip data and may choose to print message to std::cout
+  - Standardize grah naming to use node ids and not layer 2 ids
+  - End of .h file have a TODOs section for any leftover functionalities
+
+III] COMPLETED FILES (only design and only have simple fixes left - mention
+    functional changes in brackets) (have set Visible to false for individual
+      files)
+
+1) netsim-prose-relay-discovery-tracer-modelB
+2) netsim-mcppt-basic-group-charter (only consideration regarding grouping by group id or assuming one call per group)
+3) netsim-prose-direct-discovery-tracer-modelA
+4) netsim-throughput-charting
+5) netsim-prose-relay-selection-tracer
+6) point-line-graph
+7) step-graph
+8) no-tracings
+
+IV] MISC
+
+- Look into automatic scaling for graphs (esp discovery messages) 
+- The current method of the getting the layer 2 ids will have to be changed as
+and when the lte and nr models are separated

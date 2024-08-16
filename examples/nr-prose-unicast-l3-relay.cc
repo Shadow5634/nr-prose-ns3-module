@@ -261,6 +261,12 @@ TraceSinkRelayNasRxPacketTrace(Ptr<OutputStreamWrapper> stream,
     }
 }
 
+void RelayEpcStates(const EpcUeNas::State oldState, const EpcUeNas::State newState)
+{
+  std::cout << "\nNIHAR\n" << std::endl;
+  std::cout << "Time: " << std::to_string(Simulator::Now().GetSeconds()) << ", old: " << oldState << ", new: " << newState << std::endl;
+}
+
 int
 main(int argc, char* argv[])
 {
@@ -926,7 +932,17 @@ main(int argc, char* argv[])
             NS_LOG_INFO("Remote UE nodeId " << slUeNetDev.Get(i)->GetNode()->GetId()
                                             << " Relay UE nodeId "
                                             << relayUeNetDev.Get(j)->GetNode()->GetId());
+
+            std::cout << "Remote UE nodeId " << slUeNetDev.Get(i)->GetNode()->GetId()
+                                            << " Relay UE nodeId "
+                                            << relayUeNetDev.Get(j)->GetNode()->GetId() << std::endl;
         }
+    }
+
+    for (uint32_t i = 0; i < slUeNetDev.GetN(); i++)
+    {
+      auto prose = slUeNodes.Get(i)->GetObject<NrSlUeProse>();
+      //prose->TraceConnectWithoutContext();
     }
     /******************** END L3 U2N Relay configuration ***********************/
 
@@ -1234,6 +1250,10 @@ main(int argc, char* argv[])
         epcUeNas->TraceConnectWithoutContext(
             "NrSlRelayRxPacketTrace",
             MakeBoundCallback(&TraceSinkRelayNasRxPacketTrace, RelayNasRxPacketTraceStream));
+
+        epcUeNas->TraceConnectWithoutContext(
+            "StateTransition",
+            MakeCallback(&RelayEpcStates));
     }
 
     /************ SL traces database setup *************************************/

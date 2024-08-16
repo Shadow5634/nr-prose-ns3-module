@@ -106,6 +106,10 @@ $ ./ns3 run "nr-prose-network-coex --Help"
 
 #include <sqlite3.h>
 
+#ifdef HAS_NETSIMULYZER
+#include <ns3/netsimulyzer-module.h>
+#endif
+
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("NrProseNetworkCoex");
@@ -701,6 +705,59 @@ main(int argc, char* argv[])
         }
     }
     /******** END Configure ProSe layer in the SL UEs **********/
+
+  #ifdef HAS_NETSIMULYZER
+    std::string outputFileName = "netsimulyzer-nr-prose-network-coex.json";
+    auto orchestrator = CreateObject<netsimulyzer::Orchestrator>(outputFileName);
+      
+    auto inNetColor = netsimulyzer::DARK_BLUE_VALUE;
+    auto offNetColor = netsimulyzer::DARK_ORANGE_VALUE;
+
+    // TODO: Add area surrounding the inNet ue and the gNb??
+    
+    // Add area surrounding the offNet sl nodes
+    auto remoteArea = CreateObject<netsimulyzer::RectangularArea> (orchestrator, Rectangle{._xMin=-2, ._xMax=4, ._yMin=-2, ._yMax=2});
+    remoteArea->SetAttribute("Border", EnumValue(netsimulyzer::RectangularArea::DrawMode::Solid));
+    remoteArea->SetAttribute("BorderColor", offNetColor);
+    remoteArea->SetAttribute("Name", StringValue("sl Ue Area"));
+
+    netsimulyzer::NodeConfigurationHelper nodeConfigHelper{orchestrator};
+    nodeConfigHelper.Set("Model", netsimulyzer::models::SMARTPHONE_VALUE);
+    nodeConfigHelper.Set("EnableMotionTrail", BooleanValue(false));
+
+    nodeConfigHelper.Set("HighlightColor",
+                    netsimulyzer::OptionalValue<netsimulyzer::Color3>{netsimulyzer::DARK_ORANGE});
+    for (uint32_t i = 0; i < slUeNodes.GetN(); i++)
+    {
+      nodeConfigHelper.Set("Name", StringValue("sl - Node " + std::to_string(slUeNodes.Get(i)->GetId())));
+      nodeConfigHelper.Install(slUeNodes.Get(i));
+    }
+    
+    nodeConfigHelper.Set("HighlightColor",
+                    netsimulyzer::OptionalValue<netsimulyzer::Color3>{netsimulyzer::DARK_BLUE});
+    for (uint32_t i = 0; i < inNetUeNodes.GetN(); i++)
+    {
+      nodeConfigHelper.Set("Name", StringValue("inNet - Node " + std::to_string(inNetUeNodes.Get(i)->GetId())));
+      nodeConfigHelper.Install(inNetUeNodes.Get(i));
+    }   
+    
+    // The tower in the visualizer is set on the ground with a height og @param gNbHeightA
+    // TODO: Do i want a separate orchestrator for the gNb since it is stationary??
+    nodeConfigHelper.Set("Model", netsimulyzer::models::CELL_TOWER_VALUE);
+    nodeConfigHelper.Set("EnableMotionTrail", BooleanValue(false));
+    nodeConfigHelper.Set("HighlightColor", netsimulyzer::OptionalValue<netsimulyzer::Color3>{netsimulyzer::BLACK});
+    nodeConfigHelper.Set("Height", netsimulyzer::OptionalValue<double>(gNbHeight));
+    nodeConfigHelper.Set("Offset", Vector3DValue(Vector3D(0, 0, -gNbHeight)));
+    nodeConfigHelper.Set("Name", StringValue("gNB"));
+    nodeConfigHelper.Install(gNbNodes);
+  
+    //TODO: Also have logical links dissolve and remake as and when relays are rechosen by a remote??
+    netsimulyzer::LogicalLinkHelper linkHelper(orchestrator);
+    linkHelper.Link(gNbNodes.Get(0), inNetUeNodes.Get(0));
+    linkHelper.Link(slUeNodes.Get(0), slUeNodes.Get(1));
+
+  #endif
+
 
     /********* In-network applications configuration ******/
     // install UDP applications

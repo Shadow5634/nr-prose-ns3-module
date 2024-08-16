@@ -100,6 +100,10 @@ $ ./ns3 run "nr-prose-unicast-single-link --help"
 
 #include <iomanip>
 
+#ifdef HAS_NETSIMULYZER
+  #include <ns3/netsimulyzer-module.h>
+#endif
+
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("NrProseUnicastSingleLink");
@@ -293,6 +297,130 @@ TraceSinkPC5SignallingPacketTrace(Ptr<OutputStreamWrapper> stream,
     *stream->GetStream() << "\t" << srcL2Id << "\t" << dstL2Id << "\t" << pc5smt.GetMessageName();
     *stream->GetStream() << std::endl;
 }
+
+#ifdef HAS_NETSIMULYZER
+std::string outputFileName = "netsimulyzer-unicast-single-link.json";
+auto orchestrator = CreateObject<netsimulyzer::Orchestrator>(outputFileName);
+netsimulyzer::LogicalLinkHelper linkHelper(orchestrator);
+
+void
+CreateLogicalLinkOnEstablishment( Ptr<netsimulyzer::LogicalLink> link,
+                                  uint32_t srcL2Id,
+                                  uint32_t dstL2Id,
+                                  bool isTx,
+                                  Ptr<Packet> p)
+{
+    NrSlPc5SignallingMessageType pc5smt;
+    p->PeekHeader(pc5smt);
+    if (isTx == false && pc5smt.GetMessageName().find("ACCEPT"))
+    {
+      //std::cout << pc5smt.GetMessageName() << " FOUND IT!!" << std::endl;
+      //currently the only way that I could manage this
+      link->SetActive(BooleanValue(true));
+      //linkHelper.Set("Active", BooleanValue(true));
+    }
+    
+}
+
+
+/*
+ * Structure to keep track of the transmission time of the packets at the
+ * application layer. Used to calculate packet delay.
+ */
+struct PacketWithRxTimestamp
+{
+    Ptr<const Packet> p;
+    Time txTimestamp;
+};
+
+/*
+ * Map to store received packets and reception timestamps at the application
+ * layer. Used to calculate packet delay at the application layer.
+ */
+std::map<std::string, PacketWithRxTimestamp> g_rxPacketsForDelayCalc;
+
+/*
+ * \brief Trace sink function for logging the transmitted data packets and their
+ *        corresponding transmission timestamp at the application layer
+ *
+ * \param localAddrs the IP address of the node transmitting the packet
+ * \param p the packet
+ * \param srcAddrs the source IP address in the packet
+ * \param dstAddrs the destination IP address in the packet
+ * \param seqTsSizeHeader the header containing the sequence number of the packet
+ */
+void
+TxPacketTraceForDelay(const Address& localAddrs,
+                      Ptr<const Packet> p,
+                      const Address& srcAddrs,
+                      const Address& dstAddrs,
+                      const SeqTsSizeHeader& seqTsSizeHeader)
+{
+    std::ostringstream oss;
+    oss << Ipv4Address::ConvertFrom(localAddrs) << "->"
+        << InetSocketAddress::ConvertFrom(dstAddrs).GetIpv4() << "(" << seqTsSizeHeader.GetSeq()
+        << ")";
+    std::string mapKey = oss.str();
+    PacketWithRxTimestamp mapValue;
+    mapValue.p = p;
+    mapValue.txTimestamp = Simulator::Now();
+    g_rxPacketsForDelayCalc.insert(std::pair<std::string, PacketWithRxTimestamp>(mapKey, mapValue));
+}
+
+/*
+ * \brief  Trace sink to calculate the packet delay upon reception at the
+ * application layer and add it to a netSimulyzer XYSeries.
+ *
+ * \param (bound) series the pointer to the netsimulyzer XY series
+ * \param (bound) localAddrs the IP address of the node receiving the packet
+ * \param p the packet
+ * \param srcAddrs the source IP address in the packet
+ * \param dstAddrs the destination IP address in the packet
+ * \param seqTsSizeHeader the header containing the sequence number of the packet
+ */
+void
+RxPacketTraceForDelayNetSimulyzer(Ptr<netsimulyzer::XYSeries> series,
+                                  const Address& localAddrs,
+                                  Ptr<const Packet> p,
+                                  const Address& srcAddrs,
+                                  const Address& dstAddrs,
+                                  const SeqTsSizeHeader& seqTsSizeHeader)
+{
+    double delay = 0.0;
+    std::ostringstream oss;
+    oss << InetSocketAddress::ConvertFrom(srcAddrs).GetIpv4() << "->"
+        << Ipv4Address::ConvertFrom(localAddrs) << "(" << seqTsSizeHeader.GetSeq() << ")";
+    std::string mapKey = oss.str();
+    auto it = g_rxPacketsForDelayCalc.find(mapKey);
+    if (it == g_rxPacketsForDelayCalc.end())
+    {
+        NS_FATAL_ERROR("Rx packet not found?!");
+    }
+    else
+    {
+        delay =
+            Simulator::Now().GetSeconds() * 1000.0 - it->second.txTimestamp.GetSeconds() * 1000.0;
+    }
+    series->Append(Simulator::Now().GetSeconds(), delay);
+}
+
+void RelaySelect(uint32_t a, uint32_t b, uint32_t c, uint32_t d, double d2)
+{
+  std::cout << "\nRelay select fired" << std::endl;
+}
+
+void pc5Msg(uint32_t srcL2Id,
+            uint32_t dstL2Id,
+            bool isTx,
+            Ptr<Packet> p)
+{
+  NrSlPc5SignallingMessageType pc5smt;
+  p->PeekHeader(pc5smt);
+
+  std::cout << "isTX: " << std::to_string(isTx) << ", src: " << std::to_string(srcL2Id) << ", dst: " << std::to_string(dstL2Id)
+    << ", Msg: " << pc5smt.GetMessageName() << std::endl;
+}
+#endif
 
 int
 main(int argc, char* argv[])
@@ -682,6 +810,30 @@ main(int argc, char* argv[])
 
     /*********************** End ProSe configuration ***************************/
 
+#ifdef HAS_NETSIMULYZER
+    //std::string outputFileName = "netsimulyzer-prose-discovery.json";
+    //auto orchestrator = CreateObject<netsimulyzer::Orchestrator>(outputFileName);
+    //netsimulyzer::LogicalLinkHelper linkHelper(orchestrator);
+    
+    //Nodes are stationary and thus no polling required
+    orchestrator->SetAttribute("PollMobility", BooleanValue(false)); 
+
+    netsimulyzer::NodeConfigurationHelper nodeConfigHelper{orchestrator};
+    nodeConfigHelper.Set("Model", netsimulyzer::models::SMARTPHONE_VALUE);
+
+    for (uint32_t i = 0; i < ueVoiceContainer.GetN(); i++)
+    {
+      nodeConfigHelper.Set("Name", StringValue("Node " + std::to_string(ueVoiceContainer.Get(i)->GetId())));
+      nodeConfigHelper.Install(ueVoiceContainer.Get(i));
+    } 
+
+    //TODO: It would be better to link the two nodes when the link is Established as indicated by the PC5 signalling trace
+    //auto link = linkHelper.Link(ueVoiceContainer);
+    //linkHelper.Set("Active", BooleanValue(false));
+    //MakeAreaSurroundingNodes(ueVoiceContainer, orchestrator);
+
+#endif
+
     /*
      * Configure the applications:
      * - Client app: OnOff application configured to generate CBR traffic. Installed in UE1
@@ -713,6 +865,52 @@ main(int argc, char* argv[])
     serverApps.Start(Seconds(2.0));
 
     /******************** End application configuration ************************/
+
+#ifdef HAS_NETSIMULYZER
+    //TODO: What tracing would be helpful to have?
+    //Since link is set up directly maybe just a graph of when packets and sent and received?
+    //Also the PC5 signalling trace file that is generated might be convertible to a chart?
+    //
+    //1 - Throughput vs time graph for the transmitting node
+    
+    //NetSimulyzerThroughputCharting tputTracer;
+    //tputTracer.SetUp(orchestrator);
+    //tputTracer.AddApps(clientApps, "TX");
+    //tputTracer.AddApps(serverApps, "RX");
+
+    ////2 - Packet Delay Tracing for the OnOffApp
+    //Ipv4Address clientAddr =
+    //    clientApps.Get(0)->GetNode()->GetObject<Ipv4L3Protocol>()->GetAddress(1, 0).GetLocal();
+    //clientApps.Get(0)->TraceConnectWithoutContext(
+    //    "TxWithSeqTsSize",
+    //    MakeBoundCallback(&TxPacketTraceForDelay, clientAddr));
+    //
+    //
+    //Ipv4Address serverAddr =
+    //    serverApps.Get(0)->GetNode()->GetObject<Ipv4L3Protocol>()->GetAddress(1, 0).GetLocal();
+    //auto serverRxDelay = CreateObject<netsimulyzer::XYSeries>(orchestrator);
+    //serverRxDelay->SetAttribute("Name", StringValue("Delay vs Time - Receiver Node " + std::to_string(ueVoiceContainer.Get(1)->GetId())));
+    ////serverRxDelay->SetAttribute("Color", GetNextColor());
+    //serverRxDelay->SetAttribute("Connection", StringValue("None"));
+    //serverRxDelay->GetXAxis()->SetAttribute("Name", StringValue("Time (s)"));
+    //serverRxDelay->GetYAxis()->SetAttribute("Name", StringValue("Packet delay (ms)"));
+    //serverApps.Get(0)->TraceConnectWithoutContext(
+    //    "RxWithSeqTsSize",
+    //    MakeBoundCallback(&RxPacketTraceForDelayNetSimulyzer,
+    //                      serverRxDelay,
+    //                      serverAddr));
+
+    //NetSimulyzerProseDirectLinkTracer realDirLink;
+    //realDirLink.SetUp(orchestrator, ueVoiceNetDev.Get(0), ueVoiceNetDev.Get(1));
+
+    //PointLineGraph plg(orchestrator);
+    //StepGraph sg(orchestrator);
+    //for (uint32_t i = 0; i < 6; i++)
+    //{
+    //  plg.Append(i, i);
+    //  sg.Append(i, i);
+    //}
+#endif
 
     /*
      * Hook the traces, to be used to compute average PIR and to data to be
@@ -806,7 +1004,16 @@ main(int argc, char* argv[])
                                           MakeBoundCallback(&TraceSinkPC5SignallingPacketTrace,
                                                             Pc5SignallingPacketTraceStream,
                                                             ueVoiceNetDev.Get(i)->GetNode()));
+
+#ifdef HAS_NETSIMULYZER
+
+          //prose->TraceConnectWithoutContext( "RelaySelectionTrace",
+          //                                  MakeCallback(&RelaySelect));
+
+          prose->TraceConnectWithoutContext("PC5SignallingPacketTrace", MakeCallback(&pc5Msg));
+#endif
     }
+
     /******************* END PC5-S messages tracing **************************/
 
     Simulator::Stop(simTime);

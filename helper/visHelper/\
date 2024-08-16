@@ -1,0 +1,179 @@
+#ifdef HAS_NETSIMULYZER
+#include "netsim-discovery-tracer-modelA.h"
+
+#include "../../model/nr-sl-ue-prose.h"
+
+void
+NetSimulyzerDiscoveryTracerModelA::SetUp(NodeContainer nodes, NetDeviceContainer netDevs, Ptr<netsimulyzer::Orchestrator> orchestrator)
+{
+  m_orchestrator = orchestrator; 
+  PointerValue xAxis;
+  PointerValue yAxis;
+
+  auto discoveryCountCollection = CreateObject<netsimulyzer::SeriesCollection>(m_orchestrator);
+  discoveryCountCollection->SetAttribute("Name", StringValue("Discovery Count vs Time - All Nodes"));
+  discoveryCountCollection->GetAttribute("XAxis", xAxis);
+  discoveryCountCollection->GetAttribute("YAxis", yAxis);
+  yAxis.Get<netsimulyzer::ValueAxis>()->SetAttribute("Name", StringValue("Discovery Count (#)"));
+  xAxis.Get<netsimulyzer::ValueAxis>()->SetAttribute("Name", StringValue("Time (s)"));
+  discoveryCountCollection->SetAttribute("HideAddedSeries", BooleanValue(false)); 
+
+  std::set<uint32_t> allL2Ids;
+
+  for (uint32_t i = 0; i < netDevs.GetN(); i++)
+  {
+    auto node = nodes.Get(i);
+    Ptr<NrSlUeProse> nodeProse = netDevs.Get(i)->GetObject<NrSlUeProse>();
+    auto ueRrc = nodeProse->GetObject<NrUeNetDevice>()->GetRrc();
+    uint32_t srcL2Id = ueRrc->GetSourceL2Id();
+    allL2Ids.insert(srcL2Id);
+    
+    m_L2IdToNodePtr.insert(std::pair<uint32_t, Ptr<Node>>
+        (srcL2Id, node));
+  }
+  
+  //FillDistinctDiscoveriesTimeSeriesMaps(allL2Ids, orchestrator, discoveryCountCollection);
+  FillDiscoveriesHistMaps(allL2Ids, orchestrator);
+  FillDiscoveriesTimeSeriesMaps(allL2Ids, orchestrator);
+}
+
+Ptr<Node> 
+NetSimulyzerDiscoveryTracerModelA::GetNode(uint32_t l2Id)
+{
+  auto it = m_L2IdToNodePtr.find(l2Id);
+  if (it != m_L2IdToNodePtr.end())
+  {
+    return it->second;
+  }
+  else
+  {
+    NS_FATAL_ERROR("Node with specified l2 id does not exist: " + std::to_string(l2Id));
+  }
+
+  return NULL;
+}
+
+void
+NetSimulyzerDiscoveryTracerModelA::FillDiscoveriesTimeSeriesMaps(std::set<uint32_t> allL2Ids, Ptr<netsimulyzer::Orchestrator> orchestrator)
+{
+  PointerValue xAxis;
+  PointerValue yAxis;
+
+  for (uint32_t receiverL2Id : allL2Ids)
+  {
+    auto receiverNode = GetNode(receiverL2Id);
+    auto seriesCollect = CreateObject<netsimulyzer::SeriesCollection>(m_orchestrator);
+    seriesCollect->SetAttribute("Name", StringValue("Discovery Count vs Time (All senders) - For Receiver Node: " + std::to_string(receiverNode->GetId())));
+    seriesCollect->GetAttribute("XAxis", xAxis);
+    seriesCollect->GetAttribute("YAxis", yAxis);
+    xAxis.Get<netsimulyzer::ValueAxis>()->SetAttribute("Name", StringValue("Time(s)"));
+    yAxis.Get<netsimulyzer::ValueAxis>()->SetAttribute("Name", StringValue("DiscoveryCount (#)"));
+    seriesCollect->SetAttribute("HideAddedSeries", BooleanValue(false));
+
+    for (uint32_t senderL2Id : allL2Ids)
+    {
+      if (senderL2Id != receiverL2Id)
+      {
+        std::vector<uint32_t> searchTuple = {receiverL2Id, senderL2Id};
+
+        m_discoveriesOfEachL2IdTimeSeriesCountsPerUe.insert
+        (
+          std::pair<std::vector<uint32_t>, uint32_t>
+          (searchTuple, 0)
+        );
+
+        auto senderNode = GetNode(senderL2Id);
+        auto xySeries = CreateObject<netsimulyzer::XYSeries>(m_orchestrator);
+        xySeries->SetAttribute("Name", StringValue("Receiver Node: " + std::to_string(receiverNode->GetId()) + ", Sender Node: " + std::to_string(senderNode->GetId()) + " - TimeSeries"));
+        //xySeries->SetAttribute("Color", GetNextColor());
+        xySeries->GetYAxis()->SetAttribute("Name", StringValue("Discovery Count (#)"));
+        xySeries->GetXAxis()->SetAttribute("Name", StringValue("Time(s)"));
+        seriesCollect->Add(xySeries);
+        xySeries->Append(0, 0);
+
+        m_discoveriesOfEachL2IdTimeSeriesGraphsPerUe.insert
+        (
+          std::pair<std::vector<uint32_t>, Ptr<netsimulyzer::XYSeries>>
+          (searchTuple, xySeries)
+        );
+      }
+    }
+  }
+}
+
+void
+NetSimulyzerDiscoveryTracerModelA::FillDiscoveriesHistMaps(std::set<uint32_t> allL2Ids, Ptr<netsimulyzer::Orchestrator> orchestrator)
+{
+  PointerValue xAxis;
+  PointerValue yAxis;
+
+  for (uint32_t receiverL2Id : allL2Ids)
+  {
+    auto receiverNode = GetNode(receiverL2Id);
+    auto seriesCollect = CreateObject<netsimulyzer::SeriesCollection>(m_orchestrator);
+    seriesCollect->SetAttribute("Name", StringValue("Discovery Count vs All SenderL2Id - For Receiver Node: " + std::to_string(receiverNode->GetId()) + " - Histogram"));
+    seriesCollect->GetAttribute("XAxis", xAxis);
+    seriesCollect->GetAttribute("YAxis", yAxis);
+    xAxis.Get<netsimulyzer::ValueAxis>()->SetAttribute("Name", StringValue("SenderL2Id"));
+    yAxis.Get<netsimulyzer::ValueAxis>()->SetAttribute("Name", StringValue("DiscoveryCount (#)"));
+    seriesCollect->SetAttribute("HideAddedSeries", BooleanValue(false));
+
+    for (uint32_t senderL2Id : allL2Ids)
+    {
+      if (senderL2Id != receiverL2Id)
+      {
+        std::vector<uint32_t> searchTuple = {receiverL2Id, senderL2Id};
+
+        m_discoveriesOfEachL2IdHistCountsPerUe.insert
+        (
+          std::pair<std::vector<uint32_t>, uint32_t>
+          (searchTuple, 0)
+        );
+
+        auto senderNode = GetNode(senderL2Id);
+        auto xySeries = CreateObject<netsimulyzer::XYSeries>(m_orchestrator);
+        xySeries->SetAttribute("Name", StringValue("Receiver Node: " + std::to_string(receiverNode->GetId()) + ", Sender Node: " + std::to_string(senderNode->GetId()) + "Histogram"));
+        //xySeries->SetAttribute("Color", GetNextColor());
+        xySeries->GetYAxis()->SetAttribute("Name", StringValue("Discovery Count (#)"));
+        xySeries->GetXAxis()->SetAttribute("Name", StringValue("SenderL2Id"));
+        seriesCollect->Add(xySeries);
+        xySeries->Append(senderL2Id, 0);
+
+        m_discoveriesOfEachL2IdHistGraphsPerUe.insert
+        (
+          std::pair<std::vector<uint32_t>, Ptr<netsimulyzer::XYSeries>>
+          (searchTuple, xySeries)
+        );
+      }
+    }
+  }
+}
+
+void
+NetSimulyzerDiscoveryTracerModelA::FillDistinctDiscoveriesTimeSeriesMaps( std::set<uint32_t> allL2Ids, 
+                                              Ptr<netsimulyzer::Orchestrator> orchestrator,
+                                              Ptr<netsimulyzer::SeriesCollection> seriesCollect)
+{
+
+  for (uint32_t l2Id : allL2Ids)
+  {
+    auto node = GetNode(l2Id);
+    auto xySeries = CreateObject<netsimulyzer::XYSeries>(m_orchestrator);
+    xySeries->SetAttribute("Name", StringValue("Distinct Discovery Count - Node " + std::to_string(node->GetId())));
+    xySeries->SetAttribute("Color", GetNextColor());
+    xySeries->GetYAxis()->SetAttribute("Name", StringValue("Distinct Discovery Count (#)"));
+    xySeries->GetXAxis()->SetAttribute("Name", StringValue("Time(s)"));
+    seriesCollect->Add(xySeries);
+    xySeries->Append(0, 0);
+
+    m_numDistinctDiscoveriesTimeSeriesCountPerUe.insert(std::pair<uint32_t, uint32_t>(l2Id, 0)); 
+    m_discoveredList.insert(std::pair<uint32_t, std::set<uint32_t>>(l2Id, {0}));
+    m_numDistinctDiscoveriesTimeSeriesGraphPerUe.insert
+      (
+        std::pair<uint32_t, Ptr<netsimulyzer::XYSeries>>
+        (l2Id, xySeries)
+      );
+  }
+
+}
+#endif

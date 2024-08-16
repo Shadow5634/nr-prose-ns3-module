@@ -126,6 +126,10 @@ $ ./ns3 run "nr-prose-l3-relay --Help"
 
 #include <sqlite3.h>
 
+#ifdef HAS_NETSIMULYZER
+  #include <ns3/netsimulyzer-module.h>
+#endif
+
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("NrProseL3Relay");
@@ -766,6 +770,62 @@ main(int argc, char* argv[])
     }
     /******************** END L3 U2N Relay configuration ***********************/
 
+#ifdef HAS_NETSIMULYZER
+    std::string outputFileName = "netsimulyzer-nr-prose-l3-relay.json";
+    auto orchestrator = CreateObject<netsimulyzer::Orchestrator>(outputFileName);
+    //Nodes are stationary and thus no polling required
+    orchestrator->SetAttribute("PollMobility", BooleanValue(false));
+
+
+    auto onNetColor = netsimulyzer::DARK_BLUE_VALUE;
+    auto remoteColor = netsimulyzer::DARK_ORANGE_VALUE;
+    auto relayColor = netsimulyzer::GREEN_VALUE;
+
+    netsimulyzer::NodeConfigurationHelper nodeConfigHelper{orchestrator};
+    nodeConfigHelper.Set("Model", netsimulyzer::models::SMARTPHONE_VALUE);
+
+    nodeConfigHelper.Set("HighlightColor",
+                    netsimulyzer::OptionalValue<netsimulyzer::Color3>{netsimulyzer::DARK_BLUE});
+    for (uint32_t i = 0; i < inNetUeNodes.GetN(); i++)
+    {
+      nodeConfigHelper.Set("Name", StringValue("InNet - Node " + std::to_string(inNetUeNodes.Get(i)->GetId())));
+      nodeConfigHelper.Install(inNetUeNodes.Get(i));
+    }
+    
+    nodeConfigHelper.Set("HighlightColor",
+                    netsimulyzer::OptionalValue<netsimulyzer::Color3>{netsimulyzer::DARK_ORANGE});
+    for (uint32_t i = 0; i < remoteUeNodes.GetN(); i++)
+    {
+      nodeConfigHelper.Set("Name", StringValue("Remote - Node " + std::to_string(remoteUeNodes.Get(i)->GetId())));
+      nodeConfigHelper.Install(remoteUeNodes.Get(i));
+    }
+    
+    nodeConfigHelper.Set("HighlightColor",
+                    netsimulyzer::OptionalValue<netsimulyzer::Color3>{netsimulyzer::GREEN});
+    for (uint32_t i = 0; i < relayUeNodes.GetN(); i++)
+    {
+      nodeConfigHelper.Set("Name", StringValue("Relay - Node " + std::to_string(relayUeNodes.Get(i)->GetId())));
+      nodeConfigHelper.Install(relayUeNodes.Get(i));
+    }
+    
+    // The tower in the visualizer is set on the ground with a height of 10
+    nodeConfigHelper.Set("Model", netsimulyzer::models::CELL_TOWER_VALUE);
+    nodeConfigHelper.Set("HighlightColor", netsimulyzer::OptionalValue<netsimulyzer::Color3>{netsimulyzer::BLACK});
+    nodeConfigHelper.Set("Height", netsimulyzer::OptionalValue<double>(10));
+    nodeConfigHelper.Set("Offset", Vector3DValue(Vector3D(0, 0, -10)));
+    nodeConfigHelper.Set("Name", StringValue("gNB"));
+    nodeConfigHelper.Install(gNbNodes);
+
+    netsimulyzer::LogicalLinkHelper linkHelper(orchestrator);
+    //netsimulyzer::OptionalValue<netsimulyzer::Color3> redColor = netsimulyzer::OptionalValue<netsimulyzer::Color3>{240, 0, 0};
+    //linkHelper.Set("Color", redColor);
+    
+    linkHelper.Link(gNbNodes.Get(0), inNetUeNodes.Get(0));
+    linkHelper.Link(gNbNodes.Get(0), relayUeNodes.Get(0));
+    linkHelper.Link(remoteUeNodes.Get(0), relayUeNodes.Get(0));
+    linkHelper.Link(remoteUeNodes.Get(1), relayUeNodes.Get(0));
+#endif
+    
     /********* In-network only applications configuration ******/
     // install UDP applications
     uint16_t dlPort = 100;
@@ -984,6 +1044,9 @@ main(int argc, char* argv[])
     clientApps.Stop(Seconds(simTime));
     /********* END In-network only applications configuration ******/
 
+    //TODO: Add charts for the visualizer
+    //Relay charts will probably be the most interesting
+    
     /************ SL traces database setup *************************************/
     std::string exampleName = simTag + "-" + "nr-prose-l3-relay";
     SQLiteOutput db(exampleName + ".db");

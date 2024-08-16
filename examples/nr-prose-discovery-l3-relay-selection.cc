@@ -81,6 +81,10 @@
  *
  */
 
+#ifdef HAS_NETSIMULYZER
+#include <ns3/netsimulyzer-module.h>
+#endif
+
 #include "ns3/antenna-module.h"
 #include "ns3/applications-module.h"
 #include "ns3/config-store-module.h"
@@ -120,6 +124,7 @@ TraceSinkPC5SignallingPacketTrace(Ptr<OutputStreamWrapper> stream,
 {
     NrSlPc5SignallingMessageType pc5smt;
     p->PeekHeader(pc5smt);
+    std::cout << pc5smt.GetMessageName() << std::endl;
     *stream->GetStream() << Simulator::Now().GetSeconds();
     if (isTx)
     {
@@ -172,6 +177,36 @@ TraceSinkRelayNasRxPacketTrace(Ptr<OutputStreamWrapper> stream,
     {
         it->second += 1;
     }
+}
+
+void rxTraceMeth(bool shouldPrint, Ptr<const Packet> p, const Address& from, const Address& to)
+{
+  if(shouldPrint)
+  {
+    SeqTsHeader header;
+    p->PeekHeader(header);
+    //use the GetSq() and GetTs() methods to the access the param
+
+    InetSocketAddress fromAddr = InetSocketAddress::ConvertFrom(from);
+    InetSocketAddress toAddr = InetSocketAddress::ConvertFrom(to);
+    std::cout << "From Port: " << fromAddr.GetPort() << std::endl;
+    std::cout << "To Port: " << toAddr.GetPort() << std::endl;
+    std::cout << std::endl;
+
+  }
+}
+
+void tracingMeth(uint32_t senderL2Id,
+                 uint32_t receiverL2Id,
+                 bool isTx,
+                 NrSlDiscoveryHeader discMsg)
+{
+  std::cout << "isTx: " << std::to_string(isTx) << ", SenderL2Id: " << std::to_string(senderL2Id) << ", ReceiverL2Id: " << std::to_string(receiverL2Id) << std::endl;
+}
+
+void rsrpReadings(uint32_t remoteL2Id,uint32_t relayL2Id, double rsrpValue)
+{
+  std::cout << "Time: " << std::to_string(Simulator::Now().GetSeconds()) << ", Relay: " << std::to_string(relayL2Id) << ", Rsrp: " << std::to_string(rsrpValue) << std::endl;
 }
 
 int
@@ -314,9 +349,10 @@ main(int argc, char* argv[])
     m_uniformRandomVariablePositionY->SetStream(stream++);
 
     MobilityHelper mobilityRemotes;
+    Rectangle remoteRectangle = Rectangle{._xMin=3000, ._xMax=3200, ._yMin=0, ._yMax=100};
     mobilityRemotes.SetMobilityModel("ns3::RandomWalk2dMobilityModel",
                                      "Bounds",
-                                     RectangleValue(Rectangle(3000, 3200, 0, 100)));
+                                     RectangleValue(remoteRectangle));
     Ptr<ListPositionAllocator> positionAllocRemotes = CreateObject<ListPositionAllocator>();
 
     for (uint16_t i = 0; i < remoteNum; i++)
@@ -329,9 +365,10 @@ main(int argc, char* argv[])
     mobilityRemotes.Install(remoteUeNodes);
 
     MobilityHelper mobilityRelays;
+    Rectangle relayRectangle = Rectangle{._xMin=2800, ._xMax=3000, ._yMin=0, ._yMax=100};
     mobilityRelays.SetMobilityModel("ns3::RandomWalk2dMobilityModel",
                                     "Bounds",
-                                    RectangleValue(Rectangle(2800, 3000, 0, 100)));
+                                    RectangleValue(relayRectangle));
     Ptr<ListPositionAllocator> positionAllocRelays = CreateObject<ListPositionAllocator>();
     for (uint16_t i = 0; i < relayNum; i++)
     {
@@ -341,6 +378,46 @@ main(int argc, char* argv[])
     }
     mobilityRelays.SetPositionAllocator(positionAllocRelays);
     mobilityRelays.Install(relayUeNodes);
+
+
+    //MobilityHelper mobilityRemotes;
+    //Rectangle remoteRectangle = Rectangle{._xMin=30, ._xMax=50, ._yMin=0, ._yMax=20};
+    //mobilityRemotes.SetMobilityModel("ns3::RandomWalk2dMobilityModel",
+    //                                 "Bounds",
+    //                                 RectangleValue(remoteRectangle));
+    //Ptr<ListPositionAllocator> positionAllocRemotes = CreateObject<ListPositionAllocator>();
+
+    //for (uint16_t i = 0; i < remoteNum; i++)
+    //{
+    //    double x = m_uniformRandomVariablePositionX->GetValue(31, 49);
+    //    double y = m_uniformRandomVariablePositionY->GetValue(1, 19);
+    //    positionAllocRemotes->Add(Vector(x, y, ueHeight));
+    //}
+    //mobilityRemotes.SetPositionAllocator(positionAllocRemotes);
+    //mobilityRemotes.Install(remoteUeNodes);
+
+    //MobilityHelper mobilityRelays;
+    //Rectangle relayRectangle = Rectangle{._xMin=10, ._xMax=30, ._yMin=0, ._yMax=20};
+    //mobilityRelays.SetMobilityModel("ns3::RandomWalk2dMobilityModel",
+    //                                "Bounds",
+    //                                RectangleValue(relayRectangle));
+    //Ptr<ListPositionAllocator> positionAllocRelays = CreateObject<ListPositionAllocator>();
+    //for (uint16_t i = 0; i < relayNum; i++)
+    //{
+    //    double x = m_uniformRandomVariablePositionX->GetValue(11, 29);
+    //    double y = m_uniformRandomVariablePositionY->GetValue(1,19);
+    //    if (i == 0)
+    //    {
+    //      y = m_uniformRandomVariablePositionY->GetValue(1,10); 
+    //    }
+    //    else
+    //    {
+    //      y = m_uniformRandomVariablePositionY->GetValue(11,19);
+    //    }
+    //    positionAllocRelays->Add(Vector(x, y, ueHeight));
+    //}
+    //mobilityRelays.SetPositionAllocator(positionAllocRelays);
+    //mobilityRelays.Install(relayUeNodes);
 
     for (uint32_t i = 0; i < gNbNodes.GetN(); ++i)
     {
@@ -452,7 +529,7 @@ main(int argc, char* argv[])
     bwp0->m_lowerFrequency = bwp0->m_centralFrequency - bwp0->m_channelBandwidth / 2;
     bwp0->m_higherFrequency = bwp0->m_centralFrequency + bwp0->m_channelBandwidth / 2;
     bwp0->m_scenario = BandwidthPartInfo::Scenario::UMa;
-
+    
     cc0->AddBwp(std::move(bwp0));
 
     // BWP 1
@@ -462,7 +539,7 @@ main(int argc, char* argv[])
     bwp1->m_lowerFrequency = bwp1->m_centralFrequency - bwp1->m_channelBandwidth / 2;
     bwp1->m_higherFrequency = bwp1->m_centralFrequency + bwp1->m_channelBandwidth / 2;
     bwp1->m_scenario = BandwidthPartInfo::Scenario::RMa;
-
+    
     cc0->AddBwp(std::move(bwp1));
 
     // Add CC to the corresponding operation band.
@@ -517,6 +594,11 @@ main(int argc, char* argv[])
     inNetBwp.insert(inNetBwp.end(), band.GetBwpAt(/*CC*/ 0, bwpIdInNet));
     NetDeviceContainer inNetUeNetDev = nrHelper->InstallUeDevice(inNetUeNodes, inNetBwp);
     NetDeviceContainer enbNetDev = nrHelper->InstallGnbDevice(gNbNodes, inNetBwp);
+
+    //std::cout << "In net bwp stats: " << std::endl;
+    //std::cout << band.GetBwpAt(/*CC*/ 0, bwpIdInNet)->m_bwpId << std::endl;
+    //std::cout << ((band.GetBwpAt(/*CC*/ 0, bwpIdInNet)->m_scenario)==BandwidthPartInfo::Scenario::RMa) << std::endl;
+    //return 1;
 
     // SL BWP manager configuration
     uint8_t bwpIdSl = 1;
@@ -933,6 +1015,85 @@ main(int argc, char* argv[])
                                                 tftRelay,
                                                 bearerRelay);
 
+#ifdef HAS_NETSIMULYZER
+
+    std::string outputFileName = "netsimulyzer-nr-prose-discovery-l3-relay-selection.json";
+    auto orchestrator = CreateObject<netsimulyzer::Orchestrator>(outputFileName);
+    orchestrator->SetAttribute("PollMobility", BooleanValue(true));
+    //Using default polling of 100ms
+    //orchestrator->SetAttribute("MobilityPollInterval", TimeValue(MilliSeconds(_val_)));
+  
+    auto relayColor = netsimulyzer::DARK_BLUE_VALUE;
+    auto remoteColor = netsimulyzer::DARK_ORANGE_VALUE;
+
+    // Add area surrounding the remote ues movable area
+    auto remoteArea = CreateObject<netsimulyzer::RectangularArea> (orchestrator, remoteRectangle);
+    remoteArea->SetAttribute("Border", EnumValue(netsimulyzer::RectangularArea::DrawMode::Solid));
+    remoteArea->SetAttribute("BorderColor", remoteColor);
+    remoteArea->SetAttribute("Name", StringValue("Remote Ue Area"));
+
+    // Add area surrounding the relay ues movable area
+    auto relayArea = CreateObject<netsimulyzer::RectangularArea> (orchestrator, relayRectangle);
+    relayArea->SetAttribute("Border", EnumValue(netsimulyzer::RectangularArea::DrawMode::Solid));
+    relayArea->SetAttribute("BorderColor", relayColor);
+    relayArea->SetAttribute("Name", StringValue("Relay Ue Area"));
+
+    netsimulyzer::NodeConfigurationHelper nodeConfigHelper{orchestrator};
+    nodeConfigHelper.Set("Model", netsimulyzer::models::SMARTPHONE_VALUE);
+    nodeConfigHelper.Set("EnableMotionTrail", BooleanValue(false));
+    nodeConfigHelper.Set("Scale", DoubleValue(2.0));
+    nodeConfigHelper.Set("EnableLabel", BooleanValue(false));
+
+    nodeConfigHelper.Set("HighlightColor",
+                    netsimulyzer::OptionalValue<netsimulyzer::Color3>{netsimulyzer::DARK_ORANGE});
+    for (uint32_t i = 0; i < remoteUeNodes.GetN(); i++)
+    {
+      //nodeConfigHelper.Set("Name", StringValue("Remote " + std::to_string(remoteUeNodes.Get(i)->GetId())));
+      nodeConfigHelper.Install(remoteUeNodes.Get(i));
+    }
+    
+    nodeConfigHelper.Set("HighlightColor",
+                    netsimulyzer::OptionalValue<netsimulyzer::Color3>{netsimulyzer::DARK_BLUE});
+    for (uint32_t i = 0; i < relayUeNodes.GetN(); i++)
+    {
+      //nodeConfigHelper.Set("Name", StringValue("Relay " + std::to_string(relayUeNodes.Get(i)->GetId())));
+      nodeConfigHelper.Install(relayUeNodes.Get(i));
+    }
+
+    // The tower in the visualizer is set on the ground with a height og @param gNbHeightA
+    // TODO: Do i want a separate orchestrator for the gNb since it is stationary??
+    nodeConfigHelper.Set("Model", netsimulyzer::models::CELL_TOWER_VALUE);
+    nodeConfigHelper.Set("EnableMotionTrail", BooleanValue(false));
+    nodeConfigHelper.Set("HighlightColor", netsimulyzer::OptionalValue<netsimulyzer::Color3>{netsimulyzer::BLACK});
+    nodeConfigHelper.Set("Height", netsimulyzer::OptionalValue<double>(gNbHeight));
+    nodeConfigHelper.Set("Offset", Vector3DValue(Vector3D(0, 0, -gNbHeight)));
+    //nodeConfigHelper.Set("Name", StringValue("gNB"));
+    nodeConfigHelper.Install(gNbNodes);
+
+    //netsimulyzer::LogicalLinkHelper linkHelper(orchestrator);
+    //LinkAllToNode(linkHelper, gNbNodes.Get(0), relayUeNodes);
+
+    //Ptr<netsimulyzer::LogStream> eventLog = CreateObject<netsimulyzer::LogStream>(orchestrator);
+    //eventLog->SetAttribute("Name", StringValue("Event Log"));
+    //Config::Connect("/NodeList/*/$ns3::MobilityModel/CourseChange", MakeBoundCallback(&CourseChanged, eventLog));
+
+    //// Discovery tracing
+    //NetSimulyzerProseRelayDiscoveryTracerModelB tracerModelB;
+    //NetSimulyzerProseRelayDiscoveryTracerModelA tracerModelA;
+
+    //if (discModel == "ModelB")
+    //{
+    //  std::cout << "DiscoveryTracerSetup: " + std::to_string(tracerModelB.SetUp(orchestrator, remoteUeNodes, remoteUeNetDev, 
+    //            relayUeNodes, relayUeNetDev, relayDestL2Ids)) << std::endl;
+    //}
+    //else
+    //{
+    //  std::cout << "DiscoveryTracerSetup: " + std::to_string(tracerModelA.SetUp(orchestrator, remoteUeNodes, remoteUeNetDev, 
+    //            relayUeNodes, relayUeNetDev, relayDestL2Ids)) << std::endl;
+    //}
+
+#endif
+
     /*********************** End ProSe configuration ***************************/
 
     /********* Applications configuration ******/
@@ -950,7 +1111,8 @@ main(int argc, char* argv[])
         // DL traffic
         PacketSinkHelper dlPacketSinkHelper("ns3::UdpSocketFactory",
                                             InetSocketAddress(Ipv4Address::GetAny(), dlPort));
-        serverApps.Add(dlPacketSinkHelper.Install(remoteUeNodes.Get(u)));
+        auto remoteUeAppContainer = dlPacketSinkHelper.Install(remoteUeNodes.Get(u));
+        serverApps.Add(remoteUeAppContainer);
 
         UdpClientHelper dlClient(ueIpIfaceRemote.GetAddress(u), dlPort);
         dlClient.SetAttribute("PacketSize", UintegerValue(packetSizeDlUl));
@@ -978,7 +1140,8 @@ main(int argc, char* argv[])
         // UL traffic
         PacketSinkHelper ulPacketSinkHelper("ns3::UdpSocketFactory",
                                             InetSocketAddress(Ipv4Address::GetAny(), ulPort));
-        serverApps.Add(ulPacketSinkHelper.Install(remoteHost));
+        auto remoteHostAppContainer = ulPacketSinkHelper.Install(remoteHost);
+        serverApps.Add(remoteHostAppContainer);
 
         UdpClientHelper ulClient(remoteHostAddr, ulPort);
         ulClient.SetAttribute("PacketSize", UintegerValue(packetSizeDlUl));
@@ -1003,8 +1166,29 @@ main(int argc, char* argv[])
         qUl = EpsBearer::GBR_CONV_VOICE;
         EpsBearer bearerUl(qUl);
         nrHelper->ActivateDedicatedEpsBearer(remoteUeNetDev.Get(u), bearerUl, tftUl);
+
+
+        //TASK: Adding trace sources for the netsimulyzer
+        //auto remoteUePacketSinkApp = remoteUeAppContainer.Get(0);
+        //auto packetSinkUe = DynamicCast<PacketSink>(remoteUePacketSinkApp);
+        //std::cout << packetSinkUe->TraceConnectWithoutContext("RxWithAddresses", MakeBoundCallback(&rxTraceMeth, true)) << std::endl; 
+        
+        //auto remoteHostPacketSinkApp = remoteHostAppContainer.Get(0);
+        //auto packetSinkHost = DynamicCast<PacketSink>(remoteHostPacketSinkApp);
+        //std::cout << packetSinkHost->TraceConnectWithoutContext("RxWithAddresses", MakeBoundCallback(&rxTraceMeth, true)) << std::endl;
     }
     std::cout << std::endl;
+
+    //auto wrongCast = DynamicCast<PacketSink>(clientApps.Get(0));
+    //std::cout << "Wrong cast ptr value: " <<  (wrongCast == nullptr) << std::endl;
+    //std::cout << "ClientType: " << clientApps.Get(0)->GetInstanceTypeId().GetName().substr(5) << std::endl;
+    //std::cout << "ServerType: " << serverApps.Get(0)->GetInstanceTypeId().GetName() << std::endl;
+    //std::cout << "UdpClientType: " << UdpClient::GetTypeId() << std::endl;
+    //std::cout << "PacketSinkType: " << PacketSink::GetTypeId() << std::endl; 
+    //
+    
+    //return 1;
+
 
     serverApps.Start(Seconds(trafficStart));
     clientApps.Start(Seconds(trafficStart));
@@ -1012,6 +1196,12 @@ main(int argc, char* argv[])
     clientApps.Stop(simTime);
     //*/
     /********* END traffic applications configuration ******/
+
+#ifdef HAS_NETSIMULYZER
+    //NetSimulyzerProseRelaySelectionTracer relaySelectTracer;
+    //relaySelectTracer.SetUp(orchestrator, remoteUeNetDev, relayUeNetDev);
+
+#endif
 
     AsciiTraceHelper ascii;
     // PC5-S messages tracing
@@ -1025,6 +1215,8 @@ main(int argc, char* argv[])
         prose->TraceConnectWithoutContext(
             "PC5SignallingPacketTrace",
             MakeBoundCallback(&TraceSinkPC5SignallingPacketTrace, Pc5SignallingPacketTraceStream));
+
+        prose->TraceConnectWithoutContext("RelayRsrpTrace", MakeCallback(&rsrpReadings));
     }
     for (uint32_t i = 0; i < relayUeNetDev.GetN(); ++i)
     {
@@ -1054,6 +1246,26 @@ main(int argc, char* argv[])
     // Enable relay traces
     nrSlProseHelper->EnableRelayTraces();
 
+    for (uint32_t i = 0; i < relayUeNodes.GetN(); i++)
+    {
+      auto node = relayUeNodes.Get(i);
+      Ptr<NrSlUeProse> nodeProse = relayUeNetDev.Get(i)->GetObject<NrSlUeProse>();
+      auto ueRrc = nodeProse->GetObject<NrUeNetDevice>()->GetRrc();
+      uint32_t srcL2Id = ueRrc->GetSourceL2Id();
+
+      std::cout << "Relay Node Id: " << node->GetId() << " has L2Id: " << srcL2Id << std::endl;
+    }
+    
+    for (uint32_t i = 0; i < remoteUeNodes.GetN(); i++)
+    {
+      auto node = remoteUeNodes.Get(i);
+      Ptr<NrSlUeProse> nodeProse = remoteUeNetDev.Get(i)->GetObject<NrSlUeProse>();
+      auto ueRrc = nodeProse->GetObject<NrUeNetDevice>()->GetRrc();
+      uint32_t srcL2Id = ueRrc->GetSourceL2Id();
+
+      std::cout << "Remote Node Id: " << node->GetId() << " has L2Id: " << srcL2Id << std::endl;
+    }
+    
     // Run the simulation
     Simulator::Stop(simTime);
     Simulator::Run();

@@ -46,11 +46,22 @@ build_lib_example(
 )
 
 # Also requires psc and sip modules; uncomment the below if they are present
-#build_lib_example(
-#  NAME nr-prose-l3-relay-mcptt
-#  SOURCE_FILES nr-prose-l3-relay-mcptt.cc
-#  LIBRARIES_TO_LINK ${PROSE_L3_RELAY_ON_OFF_LIBRARIES}
-#                    ${libnr-prose}
-#                    ${libpsc}
-#                    ${libsip}
-#)
+build_lib_example(
+  NAME nr-prose-l3-relay-mcptt
+  SOURCE_FILES nr-prose-l3-relay-mcptt.cc
+  LIBRARIES_TO_LINK ${PROSE_L3_RELAY_ON_OFF_LIBRARIES}
+                    ${libnr-prose}
+                    ${libpsc}
+                    ${libsip}
+)
+
+
+build_lib_example(
+  NAME nr-mcptt-operational-modes-static
+  SOURCE_FILES nr-mcptt-operational-modes-static.cc
+               ${nr-prose-examples_source_files}
+  LIBRARIES_TO_LINK ${PROSE_L3_RELAY_ON_OFF_LIBRARIES}
+                    ${libpsc}
+                    ${libsip}
+)
+

@@ -35,7 +35,7 @@
 
 /**
  * \ingroup examples
- * \file nr-prose-unicast-multi-link.cc
+ * \file nr-prose-unicast-single-link.cc
  * \brief A simple example using ProSe Unicast communication, with a sidelink
  *        configuration based on cttc-nr-v2x-demo-simple.cc example
  *
@@ -48,58 +48,39 @@
  * and a single bandwidth part centered at the frequency specified by the
  * corresponding input parameter. The system bandwidth, the numerology to
  * be used and the transmission power can be setup as well.
- * Sensing based resource allocation can be enabled by setting the
- * corresponding input parameter to true. The default configuration is with
- * no sensing.
  *
  *
  * Topology:
- * There are 3 UEs in the topology located with an inter-UE distance specified
+ * There are 2 UEs in the topology located with an inter-UE distance specified
  * by the corresponding input parameter. Default configuration:
- *          UE0..........(20 m)..........UE1..........(20 m)..........UE2
- *   (0.0, 0.0, 1.5)               (20, 0.0, 1.5)               (40, 0.0, 1.5)
+ *          UE1..........(20 m)..........UE2
+ *   (0.0, 0.0, 1.5)               (20, 0.0, 1.5)
  *
  * ProSe Unicast:
- * Each pair of UEs in the system will establish a ProSe unicast direct link at
- * a given simulation time specified by the corresponding input parameter.
- * The selection of the initiating UE is done by increasing node ID, i.e.,
- * UE i is in the initiating UE of the link with UE i+1, UE i+2, etc. In the
- * default configuration of 3 UEs this means:
- *     Link     | Initiating UE  |   Target UE
- * ---------------------------------------------
- * UE0 <-> UE1  |      UE0       |     UE1
- * UE0 <-> UE2  |      UE0       |     UE2
- * UE1 <-> UE2  |      UE1       |     UE2
- *
+ * The UEs will establish a ProSe unicast direct link at a given simulation
+ * time specified by the corresponding input parameter.
  *
  * Traffic:
- * A CBR traffic flow that goes from the initiating UE of each link towards
- * the target UE of the link is configured by default. If the 'bidirectional'
- * parameter is set to True, another CBR flow is installed in the target UE
- * towards the initiating UE. The packet size, data rate and general starting
- * time of the flows can be specified in the input parameters. The actual
- * starting time of the flow is randomized in a interval of 100 ms after the
- * general starting time to avoid all flows starting at the same time.
+ * There is only one CBR traffic flow that goes from UE1 towards UE2. The
+ * packet size, data rate and starting time of the flow can be specified in
+ * the input parameters.
  *
  *
  * Output:
- * The example will print on the standard output the total transmitted and
- * received bits in the system and the corresponding number of packets. It
- * also prints the traffic statistics per traffic flow.
- * The example also produces three output files:
- * 1. default-nr-prose-unicast-multi-link.db: contains PHY layer traces in a
- * sqlite3 database created using ns-3 stats module.
- * 2. default-nr-prose-unicast-multi-link-flowMonitorOutput.txt: statistics per
- * traffic flow (the same that are printed in the standard output)
- * 3. default-nr-prose-unicast-multi-link-NrSlPc5SignallingPacketTrace.txt: log
- * of the transmitted and received PC5 signaling messages used for the
- * establishment of each ProSe unicast direct link.
+ * The example will print on the standard output the average Packet
+ * Inter-Reception (PIR) type 2 computed as defined in 37.885.
+ * The example also produces two output files:
+ * 1. default-nr-prose-unicast-single-link.db: contains MAC and PHY layer
+ * traces in a sqlite3 database created using ns-3 stats module.
+ * 2. NrSlPc5SignallingPacketTrace.txt: log of the transmitted and received PC5
+ * signaling messages used for the establishment of the ProSe unicast direct
+ * link.
  *
  * Please refer to the cttc-nr-v2x-demo-simple.cc example for a nice tutorial
- * of scenario setup and NR sidelink configuration.
+ * of scenario setup and NR sidelink configuration
  *
  * \code{.unparsed}
-$ ./ns3 run "nr-prose-unicast-multi-link --help"
+$ ./ns3 run "nr-prose-unicast-single-link --help"
     \endcode
  *
  */
@@ -108,7 +89,6 @@ $ ./ns3 run "nr-prose-unicast-multi-link --help"
 #include "ns3/applications-module.h"
 #include "ns3/config-store-module.h"
 #include "ns3/core-module.h"
-#include "ns3/flow-monitor-module.h"
 #include "ns3/internet-module.h"
 #include "ns3/lte-module.h"
 #include "ns3/mobility-module.h"
@@ -119,21 +99,49 @@ $ ./ns3 run "nr-prose-unicast-multi-link --help"
 #include "ns3/stats-module.h"
 
 #include <iomanip>
-#include <sqlite3.h>
 
 #ifdef HAS_NETSIMULYZER
   #include <ns3/netsimulyzer-module.h>
 #endif
 
-
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE("NrProseUnicastMultiLink");
+NS_LOG_COMPONENT_DEFINE("NrProseUnicastSingleLink");
 
 /*
  * Global methods and variable to hook trace sources from different layers of
  * the protocol stack.
  */
+
+/**
+ * \brief Method to listen to the trace SlPscchScheduling of NrUeMac, which gets
+ *        triggered upon the transmission of SCI format 1-A from UE MAC.
+ *
+ * \param pscchStats Pointer to the \link UeMacPscchTxOutputStats \endlink class,
+ *        which is responsible for writing the trace source parameters to a database.
+ * \param pscchStatsParams Parameters of the trace source.
+ */
+void
+NotifySlPscchScheduling(UeMacPscchTxOutputStats* pscchStats,
+                        const SlPscchUeMacStatParameters pscchStatsParams)
+{
+    pscchStats->Save(pscchStatsParams);
+}
+
+/**
+ * \brief Method to listen to the trace SlPsschScheduling of NrUeMac, which gets
+ *        triggered upon the transmission of SCI format 2-A and data from UE MAC.
+ *
+ * \param psschStats Pointer to the \link UeMacPsschTxOutputStats \endlink class,
+ *        which is responsible for writing the trace source parameters to a database.
+ * \param psschStatsParams Parameters of the trace source.
+ */
+void
+NotifySlPsschScheduling(UeMacPsschTxOutputStats* psschStats,
+                        const SlPsschUeMacStatParameters psschStatsParams)
+{
+    psschStats->Save(psschStatsParams);
+}
 
 /**
  * \brief Method to listen to the trace RxPscchTraceUe of NrSpectrumPhy, which gets
@@ -229,6 +237,32 @@ TransmitPacket(Ptr<const Packet> packet)
 }
 
 /*
+ * Global variables used to compute PIR
+ */
+uint64_t pirCounter = 0;
+Time lastPktRxTime;
+Time pir;
+
+/**
+ * \brief This method listens to the packet sink application trace Rx.
+ * \param packet The packet
+ * \param from The address of the transmitter
+ */
+void
+ComputePir(Ptr<const Packet> packet, const Address& from [[maybe_unused]])
+{
+    if (pirCounter == 0 && lastPktRxTime.GetSeconds() == 0.0)
+    {
+        // this the first packet, just store the time and get out
+        lastPktRxTime = Simulator::Now();
+        return;
+    }
+    pir = pir + (Simulator::Now() - lastPktRxTime);
+    lastPktRxTime = Simulator::Now();
+    pirCounter++;
+}
+
+/*
  * \brief Trace sink function for logging transmission and reception of PC5
  *        signaling (PC5-S) messages
  *
@@ -266,161 +300,33 @@ TraceSinkPC5SignallingPacketTrace(Ptr<OutputStreamWrapper> stream,
 
 #ifdef HAS_NETSIMULYZER
 
-struct NetSimulyzerLinkOnEstablishment
+ /*
+ * Structure to store the NetSimulizer traces of all discovery announcements made
+ */
+struct NetSimulyzerLink
 {
-  void SetUp(Ptr<netsimulyzer::Orchestrator> orchestrator, NodeContainer nodes, NetDeviceContainer devices);
-  void AddL2Ids(NetDeviceContainer devices, NodeContainer nodes);
+  void CreateLogicalLinkOnEstablishment(uint32_t srcL2Id,
+                                        uint32_t dstL2Id,
+                                        bool isTx,
+                                        Ptr<Packet> p);
+  netsimulyzer::LogicalLinkHelper* m_linkHelper;
 
-  Ptr<Node> GetNode(uint32_t l2Id);
-  void CreateLogicalLinkOnEstablishment(uint32_t srcL2Id, uint32_t dstL2Id, bool isTx, Ptr<Packet> p);
-
-  std::map<uint32_t, Ptr<Node>> m_L2IdToNodePtr;
-  std::map<std::pair<uint32_t, uint32_t>, Ptr<netsimulyzer::LogicalLink>> m_existingLinks;
-
-  Ptr<netsimulyzer::Orchestrator> m_orchestrator;
-};
-
+}; 
+  
 void
-NetSimulyzerLinkOnEstablishment::SetUp(Ptr<netsimulyzer::Orchestrator> orchestrator, NodeContainer nodes, NetDeviceContainer devices)
-{
-  m_orchestrator = orchestrator;
-  AddL2Ids(devices, nodes);
-}
-
-void
-NetSimulyzerLinkOnEstablishment::AddL2Ids(NetDeviceContainer devices, NodeContainer nodes)
-{
-  for (uint32_t i = 0; i < devices.GetN(); i++)
-  {
-    auto node = nodes.Get(i);
-    Ptr<NrSlUeProse> nodeProse = devices.Get(i)->GetObject<NrSlUeProse>();
-    auto ueRrc = nodeProse->GetObject<NrUeNetDevice>()->GetRrc();
-    uint32_t srcL2Id = ueRrc->GetSourceL2Id();
-    
-    m_L2IdToNodePtr.insert(std::pair<uint32_t, Ptr<Node>>
-        (srcL2Id, node));
-  }
-}
-
-Ptr<Node>
-NetSimulyzerLinkOnEstablishment::GetNode(uint32_t l2Id)
-{
-  auto it = m_L2IdToNodePtr.find(l2Id);
-  if (it == m_L2IdToNodePtr.end())
-  {
-    std::cout << "DID NOT FIND" << std::endl;
-    NS_FATAL_ERROR("L2 ID not found");
-
-    return nullptr;
-  }
-  else
-  {
-    return it->second;
-  }
-}
-
-void
-NetSimulyzerLinkOnEstablishment::CreateLogicalLinkOnEstablishment(uint32_t srcL2Id,
-                                                                  uint32_t dstL2Id,
-                                                                  bool isTx,
-                                                                  Ptr<Packet> p)
+NetSimulyzerLink::CreateLogicalLinkOnEstablishment( uint32_t srcL2Id,
+                                  uint32_t dstL2Id,
+                                  bool isTx,
+                                  Ptr<Packet> p)
 {
     NrSlPc5SignallingMessageType pc5smt;
     p->PeekHeader(pc5smt);
     if (isTx == false && pc5smt.GetMessageName().find("ACCEPT"))
     {
-      std::pair<uint32_t, uint32_t> nodePair{srcL2Id, dstL2Id};
-      auto it = m_existingLinks.find(nodePair);
-      // link already exists - keep active
-      if (it != m_existingLinks.end())
-      {
-        it->second->SetActive(BooleanValue(true));
-      }
-      //new link establishment
-      else
-      {
-        auto node1 = GetNode(srcL2Id);
-        auto node2 = GetNode(dstL2Id);
-        
-        netsimulyzer::LogicalLinkHelper linkHelper(m_orchestrator);
-        auto link = linkHelper.Link(node1, node2);
-        
-        m_existingLinks.insert
-        (
-          std::pair<std::pair<uint32_t, uint32_t>, Ptr<netsimulyzer::LogicalLink>> 
-          (nodePair, link)
-        );
-      }
+      std::cout << pc5smt.GetMessageName() << " FOUND IT!!" << std::endl;
     }
     
 }
-
-/*
- * Structure to keep track of the transmission time of the packets at the
- * application layer. Used to calculate packet delay.
- */
-struct PacketWithRxTimestamp
-{
-    Ptr<const Packet> p;
-    Time txTimestamp;
-};
-
-/*
- * Map to store received packets and reception timestamps at the application
- * layer. Used to calculate packet delay at the application layer.
- */
-std::map<std::string, PacketWithRxTimestamp> g_rxPacketsForDelayCalc;
-
-void
-TxTraceForNetSimulyzer(const Address& localAddrs,
-                      Ptr<const Packet> p,
-                      const Address& srcAddrs,
-                      const Address& dstAddrs,
-                      const SeqTsSizeHeader& seqTsSizeHeader)
-{
-  //Ipv4Address sender = Ipv4Address::ConvertFrom(from);
-  //Ipv4Address receiver = Ipv4Address::ConvertFrom(to);
-
-  //std::cout << sender << " --> " << receiver << std::endl;
-
-  std::ostringstream oss;
-  oss << Ipv4Address::ConvertFrom(localAddrs) << "->"
-      << InetSocketAddress::ConvertFrom(dstAddrs).GetIpv4() << "(" << seqTsSizeHeader.GetSeq()
-      << ")";
-  std::string mapKey = oss.str();
-  PacketWithRxTimestamp mapValue;
-  mapValue.p = p;
-  mapValue.txTimestamp = Simulator::Now();
-  g_rxPacketsForDelayCalc.insert(std::pair<std::string, PacketWithRxTimestamp>(mapKey, mapValue));
-
-}
-
-void
-RxTraceForNetSimulyzer(Ptr<netsimulyzer::XYSeries> series,
-                                  const Address& localAddrs,
-                                  Ptr<const Packet> p,
-                                  const Address& srcAddrs,
-                                  const Address& dstAddrs,
-                                  const SeqTsSizeHeader& seqTsSizeHeader)
-{
-    double delay = 0.0;
-    std::ostringstream oss;
-    oss << InetSocketAddress::ConvertFrom(srcAddrs).GetIpv4() << "->"
-        << Ipv4Address::ConvertFrom(localAddrs) << "(" << seqTsSizeHeader.GetSeq() << ")";
-    std::string mapKey = oss.str();
-    auto it = g_rxPacketsForDelayCalc.find(mapKey);
-    if (it == g_rxPacketsForDelayCalc.end())
-    {
-        NS_FATAL_ERROR("Rx packet not found?!");
-    }
-    else
-    {
-        delay =
-            (Simulator::Now().GetSeconds() * 1000.0) - (it->second.txTimestamp.GetSeconds() * 1000.0);
-    }
-    series->Append(Simulator::Now().GetSeconds(), delay);
-}
-
 #endif
 
 int
@@ -432,13 +338,12 @@ main(int argc, char* argv[])
     // Traffic parameters
     uint32_t udpPacketSize = 200; // bytes
     double dataRate = 16;         // 16 kilobits per second
-    bool bidirectional = false;
 
     // Simulation timeline parameters
-    Time simTime = Seconds(20.0); // Total simulation time
+    Time simTime = Seconds(10); // Total simulation time
     Time startDirLinkTime =
         Seconds(2.0); // Time to start the Prose Unicast Direct Link establishment procedure
-    Time startTrafficTime = Seconds(3.0); // Time to start the traffic in the application layer
+    Time startTrafficTime = Seconds(2.1); // Time to start the traffic in the application layer
 
     // NR parameters
     uint16_t numerologyBwpSl = 2;           // The numerology to be used in sidelink bandwidth part
@@ -446,21 +351,15 @@ main(int argc, char* argv[])
     uint16_t bandwidthBandSl = 400;         // Multiple of 100 KHz; 400 = 40 MHz
     double txPower = 23;                    // dBm
 
-    // SL parameters
-    bool sensing = false;
-
     // Where we will store the output files.
     std::string simTag = "default";
+    std::string outputDir = "./";
 
     CommandLine cmd;
 
     cmd.AddValue("interUeDistance", "The distance among the UEs in the topology", interUeDistance);
     cmd.AddValue("packetSizeBe", "packet size in bytes to be used by the traffic", udpPacketSize);
     cmd.AddValue("dataRate", "The data rate in kilobits per second", dataRate);
-    cmd.AddValue("bidirectional",
-                 "True if traffic should flow in both direction of the unicast link, "
-                 "False if only a flow in the initiating->target direction is desired",
-                 bidirectional);
     cmd.AddValue("simTime", "Simulation time in seconds", simTime);
     cmd.AddValue("startDirLinkTime",
                  "Time to start the Prose Unicast Direct Link establishment procedure in seconds",
@@ -478,13 +377,10 @@ main(int argc, char* argv[])
                  "The system bandwidth to be used for sidelink",
                  bandwidthBandSl);
     cmd.AddValue("txPower", "total tx power in dBm", txPower);
-    cmd.AddValue("sensing",
-                 "If true, it enables the sensing based resource selection for "
-                 "SL, otherwise, no sensing is applied",
-                 sensing);
     cmd.AddValue("simTag",
                  "tag to be appended to output filenames to distinguish simulation campaigns",
                  simTag);
+    cmd.AddValue("outputDir", "directory where to store simulation results", outputDir);
 
     // Parse the command line
     cmd.Parse(argc, argv);
@@ -497,7 +393,7 @@ main(int argc, char* argv[])
 
     // UE nodes creation
     NodeContainer ueVoiceContainer;
-    uint16_t ueNum = 3;
+    uint16_t ueNum = 2;
     ueVoiceContainer.Create(ueNum);
 
     // UE nodes mobility setup
@@ -578,11 +474,10 @@ main(int argc, char* argv[])
 
     // NR Sidelink attribute of UE MAC, which are would be common for all the UEs
     nrHelper->SetUeMacTypeId(NrSlUeMac::GetTypeId());
-    nrHelper->SetUeMacAttribute("EnableSensing", BooleanValue(sensing));
+    nrHelper->SetUeMacAttribute("EnableSensing", BooleanValue(false));
     nrHelper->SetUeMacAttribute("T1", UintegerValue(2));
     nrHelper->SetUeMacAttribute("ActivePoolId", UintegerValue(0));
-    nrHelper->SetUeMacAttribute("NumHarqProcess", UintegerValue(255));
-    nrHelper->SetUeMacAttribute("SlThresPsschRsrp", IntegerValue(-128));
+    nrHelper->SetUeMacAttribute("NumHarqProcess", UintegerValue(4));
 
     uint8_t bwpIdForGbrMcptt = 0;
 
@@ -759,8 +654,6 @@ main(int argc, char* argv[])
     Ipv4InterfaceContainer ueIpIface;
     ueIpIface = epcHelper->AssignUeIpv4Address(ueVoiceNetDev);
 
-    std::vector<Ipv4Address> ipv4AddressVector(ueNum);
-
     // set the default gateway for the UE
     Ipv4StaticRoutingHelper ipv4RoutingHelper;
     for (uint32_t u = 0; u < ueVoiceContainer.GetN(); ++u)
@@ -770,12 +663,14 @@ main(int argc, char* argv[])
         Ptr<Ipv4StaticRouting> ueStaticRouting =
             ipv4RoutingHelper.GetStaticRouting(ueNode->GetObject<Ipv4>());
         ueStaticRouting->SetDefaultRoute(epcHelper->GetUeDefaultGatewayAddress(), 1);
-
-        // Obtain local IPv4 addresses that will be used to route the unicast traffic upon setup of
-        // the direct link
-        ipv4AddressVector[u] =
-            ueVoiceContainer.Get(u)->GetObject<Ipv4L3Protocol>()->GetAddress(1, 0).GetLocal();
     }
+    // Obtain local IPv4 addresses that will be used to route the unicast traffic upon setup of the
+    // direct link
+    Ipv4Address remoteAddress1, remoteAddress2;
+    remoteAddress1 =
+        ueVoiceContainer.Get(0)->GetObject<Ipv4L3Protocol>()->GetAddress(1, 0).GetLocal(); // UE1
+    remoteAddress2 =
+        ueVoiceContainer.Get(1)->GetObject<Ipv4L3Protocol>()->GetAddress(1, 0).GetLocal(); // UE2
 
     /*
      * Configure ProSe
@@ -788,19 +683,14 @@ main(int argc, char* argv[])
     // Configure ProSe Unicast parameters. At the moment it only instruct the MAC
     // layer (and PHY therefore) to monitor packets directed the UE's own Layer 2 ID
     nrSlProseHelper->PrepareUesForUnicast(ueVoiceNetDev);
-    // Configure the value of timer Timer T5080 (Prose Direct Link Establishment Request
-    // Retransmission) to a lower value than the standard (8.0 s) to speed connection in shorter
-    // simulation time
-    Config::SetDefault("ns3::NrSlUeProseDirectLink::T5080", TimeValue(Seconds(1.0)));
     /*
      * Setup the start of the ProSe direct link establishment procedure
      * (with the 'Real' protocol, PC5-S messages are exchanged over the SL)
-     * First UE on the function call will be the initiating UE (UE i),
-     * which starts the procedure, and it is interested in establish a direct
-     * link with the following j UEs, which will be the target UEs
+     * First UE will be the initiating UE (UE1), which starts the procedure, and it is interested in
+     * establish a direct link with the second UE (UE2), which will be the target UE.
+     * We also configure which traffic profiles will be used by the data radio bearers setup in each
+     * UE for the direct link.
      */
-    NS_LOG_INFO("Configuring unicast direct links...");
-
     SidelinkInfo initSlInfo;
     initSlInfo.m_castType = SidelinkInfo::CastType::Unicast;
     initSlInfo.m_dynamic = true;
@@ -816,26 +706,19 @@ main(int argc, char* argv[])
     trgtSlInfo.m_priority = 0;
     trgtSlInfo.m_rri = Seconds(0);
     trgtSlInfo.m_pdb = MilliSeconds(20);
-    for (uint32_t i = 0; i < ueVoiceContainer.GetN() - 1; ++i)
-    {
-        for (uint32_t j = i + 1; j < ueVoiceContainer.GetN(); ++j)
-        {
-            nrSlProseHelper->EstablishRealDirectLink(startDirLinkTime,
-                                                     ueVoiceNetDev.Get(i),
-                                                     ipv4AddressVector[i],
-                                                     initSlInfo,
-                                                     ueVoiceNetDev.Get(j),
-                                                     ipv4AddressVector[j],
-                                                     trgtSlInfo);
-            NS_LOG_INFO("Initiating UE nodeId " << i << " target UE nodeId " << j);
-        }
-    }
+
+    nrSlProseHelper->EstablishRealDirectLink(startDirLinkTime,
+                                             ueVoiceNetDev.Get(0),
+                                             remoteAddress1,
+                                             initSlInfo,
+                                             ueVoiceNetDev.Get(1),
+                                             remoteAddress2,
+                                             trgtSlInfo);
 
     /*********************** End ProSe configuration ***************************/
 
 #ifdef HAS_NETSIMULYZER
-
-    std::string outputFileName = "netsimulyzer-prose-unicast-multi-link.json";
+    std::string outputFileName = "netsimulyzer-prose-discovery.json";
     auto orchestrator = CreateObject<netsimulyzer::Orchestrator>(outputFileName);
     //Nodes are stationary and thus no polling required
     orchestrator->SetAttribute("PollMobility", BooleanValue(false)); 
@@ -849,134 +732,49 @@ main(int argc, char* argv[])
       nodeConfigHelper.Install(ueVoiceContainer.Get(i));
     } 
 
-    //MakeAreaSurroundingNodes(ueVoiceContainer, orchestrator);
-    //
-    //NetSimulyzerLinkOnEstablishment linkTracer;
-    //linkTracer.SetUp(orchestrator, ueVoiceContainer, ueVoiceNetDev);
-    //
-    //for (uint32_t i = 0; i < ueVoiceNetDev.GetN(); ++i)
-    //{
-    //    Ptr<NrSlUeProse> prose = ueVoiceNetDev.Get(i)->GetObject<NrSlUeProse>();
-    //    prose->TraceConnectWithoutContext("PC5SignallingPacketTrace",
-    //                                      MakeCallback(&NetSimulyzerLinkOnEstablishment::CreateLogicalLinkOnEstablishment, &linkTracer));
-    //}
+    netsimulyzer::LogicalLinkHelper linkHelper(orchestrator);
+    //TODO: It would be better to link the two nodes when the link is Established as indicated by the PC5 signalling trace
+    linkHelper.Link(ueVoiceContainer);
+    linkHelper.Set("Active", BooleanValue(false));
+
 #endif
 
     /*
      * Configure the applications:
-     * - Client app: OnOff application configured to generate CBR traffic.
-     *               Installed in the initiating UE of each link by default, and
-     *               in target UE if 'bidirectional' flag is True.
-     * - Server app: PacketSink application to consume the received traffic.
-     *               Installed in all UEs
+     * - Client app: OnOff application configured to generate CBR traffic. Installed in UE1
+     * - Server app: PacketSink application to consume the received traffic. Installed in UE2
      */
-    NS_LOG_INFO("Configuring applications...");
-    // Random variable to randomize a bit start times of the client applications
-    // to avoid simulation artifacts of all the TX UEs transmitting at the same time.
-    Ptr<UniformRandomVariable> startTimeRnd = CreateObject<UniformRandomVariable>();
-    startTimeRnd->SetAttribute("Min", DoubleValue(0));
-    startTimeRnd->SetAttribute("Max", DoubleValue(0.10));
-
+    OnOffHelper sidelinkClient("ns3::UdpSocketFactory", InetSocketAddress(remoteAddress2, port));
+    sidelinkClient.SetAttribute("EnableSeqTsSizeHeader", BooleanValue(true));
     std::string dataRateString = std::to_string(dataRate) + "kb/s";
-    ApplicationContainer clientApps;
-    std::cout << "Traffic flows: " << std::endl;
-    for (uint32_t i = 0; i < ueVoiceContainer.GetN() - 1; ++i)
-    {
-        for (uint32_t j = i + 1; j < ueVoiceContainer.GetN(); ++j)
-        {
-            OnOffHelper sidelinkClient(
-                "ns3::UdpSocketFactory",
-                InetSocketAddress(ipv4AddressVector[j], port)); // Towards UE j
-            sidelinkClient.SetAttribute("EnableSeqTsSizeHeader", BooleanValue(true));
-            sidelinkClient.SetConstantRate(DataRate(dataRateString), udpPacketSize);
-            ApplicationContainer app =
-                sidelinkClient.Install(ueVoiceContainer.Get(i)); // Installed in UE i
+    std::cout << "Data rate " << DataRate(dataRateString) << std::endl;
+    sidelinkClient.SetConstantRate(DataRate(dataRateString), udpPacketSize);
 
-            Time appStart = startTrafficTime + Seconds(startTimeRnd->GetValue());
-            app.Start(appStart);
-            clientApps.Add(app);
-            
-            NS_LOG_INFO("OnOff application installed in UE nodeId "
-                        << i << " srcIp " << ipv4AddressVector[i] << " towards UE nodeId " << j
-                        << " dstIp " << ipv4AddressVector[j]);
-            std::cout << ipv4AddressVector[i] << " -> " << ipv4AddressVector[j]
-                      << " start time: " << appStart.GetSeconds()
-                      << " s, end time: " << simTime.GetSeconds() << " s" << std::endl;
-
-#ifdef HAS_NETSIMULYZER
-            Ipv4Address clientAddr =
-                app.Get(0)->GetNode()->GetObject<Ipv4L3Protocol>()->GetAddress(1, 0).GetLocal();
-            app.Get(0)->TraceConnectWithoutContext(
-                "TxWithSeqTsSize",
-                MakeBoundCallback(&TxTraceForNetSimulyzer, clientAddr));
-
-
-#endif
-
-            if (bidirectional)
-            {
-                OnOffHelper sidelinkClient(
-                    "ns3::UdpSocketFactory",
-                    InetSocketAddress(ipv4AddressVector[i], port)); // Towards UE i
-                sidelinkClient.SetAttribute("EnableSeqTsSizeHeader", BooleanValue(true));
-                sidelinkClient.SetConstantRate(DataRate(dataRateString), udpPacketSize);
-                ApplicationContainer app2 =
-                    sidelinkClient.Install(ueVoiceContainer.Get(j)); // Installed in UE j
-                Time appStart = startTrafficTime + Seconds(startTimeRnd->GetValue());
-                app2.Start(appStart);
-                clientApps.Add(app2);
-                NS_LOG_INFO("OnOff application installed in UE nodeId "
-                            << j << " srcIp " << ipv4AddressVector[j] << " towards UE nodeId " << i
-                            << " dstIp " << ipv4AddressVector[i]);
-                std::cout << ipv4AddressVector[j] << " -> " << ipv4AddressVector[i]
-                          << " start time: " << appStart.GetSeconds()
-                          << " s, end time: " << simTime.GetSeconds() << " s" << std::endl;
-
-                Ipv4Address clientAddr2 =
-                    app2.Get(0)->GetNode()->GetObject<Ipv4L3Protocol>()->GetAddress(1, 0).GetLocal();
-                app2.Get(0)->TraceConnectWithoutContext(
-                    "TxWithSeqTsSize",
-                    MakeBoundCallback(&TxTraceForNetSimulyzer, clientAddr2));
-            }
-        }
-    }
-
+    ApplicationContainer clientApps =
+        sidelinkClient.Install(ueVoiceContainer.Get(0)); // Installed in UE1
+    clientApps.Start(startTrafficTime);
     clientApps.Stop(simTime);
+
+    // Output app start, stop and duration
+    double realAppStart = startTrafficTime.GetSeconds();
+    double appStopTime = simTime.GetSeconds();
+
+    std::cout << "App start time " << realAppStart << " sec" << std::endl;
+    std::cout << "App stop time " << appStopTime << " sec" << std::endl;
 
     ApplicationContainer serverApps;
     PacketSinkHelper sidelinkSink("ns3::UdpSocketFactory",
                                   InetSocketAddress(Ipv4Address::GetAny(), port));
     sidelinkSink.SetAttribute("EnableSeqTsSizeHeader", BooleanValue(true));
-    serverApps = sidelinkSink.Install(ueVoiceContainer); // Installed in all UEs
+    serverApps = sidelinkSink.Install(ueVoiceContainer.Get(1)); // Installed in UE2
     serverApps.Start(Seconds(2.0));
-
-    for (uint32_t i = 0; i < serverApps.GetN(); i++)
-    {
-      //auto packSinkAppPtr = DynamicCast<PacketSink>(serverApps.Get(i));
-      //packSinkAppPtr->TraceConnectWithoutContext("RxWithAddresses", MakeCallback(&RxTraceForSimulyzer));
-      
-      Ipv4Address serverAddr =
-          serverApps.Get(i)->GetNode()->GetObject<Ipv4L3Protocol>()->GetAddress(1, 0).GetLocal();
-      auto serverRxDelay = CreateObject<netsimulyzer::XYSeries>(orchestrator);
-      serverRxDelay->SetAttribute("Name", StringValue("Delay vs Time - Receiver Node " + std::to_string(ueVoiceContainer.Get(i)->GetId())));
-      //serverRxDelay->SetAttribute("Color", GetNextColor());
-      serverRxDelay->SetAttribute("Connection", StringValue("None"));
-      serverRxDelay->GetXAxis()->SetAttribute("Name", StringValue("Time (s)"));
-      serverRxDelay->GetYAxis()->SetAttribute("Name", StringValue("Packet delay (ms)"));
-      serverApps.Get(i)->TraceConnectWithoutContext(
-          "RxWithSeqTsSize",
-          MakeBoundCallback(&RxTraceForNetSimulyzer,
-                            serverRxDelay,
-                            serverAddr));
-
-    }
 
     /******************** End application configuration ************************/
 
 #ifdef HAS_NETSIMULYZER
-  //NetSimulyzerThroughputCharting thTracer;
-  //thTracer.SetUp(orchestrator);
-  //thTracer.AddApps(clientApps, "TX");
+    //TODO: What tracing would be helpful to have?
+    //Since link is set up directly maybe just a graph of when packets and sent and received?
+    //Also the PC5 signalling trace file that is generated might be convertible to a chart?
 #endif
 
     /*
@@ -986,17 +784,36 @@ main(int argc, char* argv[])
 
     // Trace receptions; use the following to be robust to node ID changes
     std::ostringstream path;
-    path << "/NodeList/*/ApplicationList/*/$ns3::PacketSink/Rx";
+    path << "/NodeList/" << ueVoiceContainer.Get(1)->GetId()
+         << "/ApplicationList/0/$ns3::PacketSink/Rx";
     Config::ConnectWithoutContext(path.str(), MakeCallback(&ReceivePacket));
     path.str("");
 
-    path << "/NodeList/*/ApplicationList/*/$ns3::OnOffApplication/Tx";
+    path << "/NodeList/" << ueVoiceContainer.Get(1)->GetId()
+         << "/ApplicationList/0/$ns3::PacketSink/Rx";
+    Config::ConnectWithoutContext(path.str(), MakeCallback(&ComputePir));
+    path.str("");
+
+    path << "/NodeList/" << ueVoiceContainer.Get(0)->GetId()
+         << "/ApplicationList/0/$ns3::OnOffApplication/Tx";
     Config::ConnectWithoutContext(path.str(), MakeCallback(&TransmitPacket));
     path.str("");
 
     // Database setup
-    std::string exampleName = simTag + "-" + "nr-prose-unicast-multi-link";
-    SQLiteOutput db(exampleName + ".db");
+    std::string exampleName = simTag + "-" + "nr-prose-unicast-single-link";
+    SQLiteOutput db(outputDir + exampleName + ".db");
+
+    UeMacPscchTxOutputStats pscchStats;
+    pscchStats.SetDb(&db, "pscchTxUeMac");
+    Config::ConnectWithoutContext("/NodeList/*/DeviceList/*/$ns3::NrUeNetDevice/"
+                                  "ComponentCarrierMapUe/*/NrUeMac/SlPscchScheduling",
+                                  MakeBoundCallback(&NotifySlPscchScheduling, &pscchStats));
+
+    UeMacPsschTxOutputStats psschStats;
+    psschStats.SetDb(&db, "psschTxUeMac");
+    Config::ConnectWithoutContext("/NodeList/*/DeviceList/*/$ns3::NrUeNetDevice/"
+                                  "ComponentCarrierMapUe/*/NrUeMac/SlPsschScheduling",
+                                  MakeBoundCallback(&NotifySlPsschScheduling, &psschStats));
 
     UePhyPscchRxOutputStats pscchPhyStats;
     pscchPhyStats.SetDb(&db, "pscchRxUePhy");
@@ -1020,12 +837,11 @@ main(int argc, char* argv[])
     {
         Ipv4Address localAddrs =
             clientApps.Get(ac)->GetNode()->GetObject<Ipv4L3Protocol>()->GetAddress(1, 0).GetLocal();
-        clientApps.Get(ac)->TraceConnect("TxWithSeqTsSize",
-                                         "tx",
-                                         MakeBoundCallback(&UePacketTraceDb,
-                                                           &pktStats,
-                                                           clientApps.Get(ac)->GetNode(),
-                                                           localAddrs));
+        std::cout << "Tx address: " << localAddrs << std::endl;
+        clientApps.Get(ac)->TraceConnect(
+            "TxWithSeqTsSize",
+            "tx",
+            MakeBoundCallback(&UePacketTraceDb, &pktStats, ueVoiceContainer.Get(0), localAddrs));
     }
 
     // Set Rx traces
@@ -1033,24 +849,19 @@ main(int argc, char* argv[])
     {
         Ipv4Address localAddrs =
             serverApps.Get(ac)->GetNode()->GetObject<Ipv4L3Protocol>()->GetAddress(1, 0).GetLocal();
-        serverApps.Get(ac)->TraceConnect("RxWithSeqTsSize",
-                                         "rx",
-                                         MakeBoundCallback(&UePacketTraceDb,
-                                                           &pktStats,
-                                                           serverApps.Get(ac)->GetNode(),
-                                                           localAddrs));
+        std::cout << "Rx address: " << localAddrs << std::endl;
+        serverApps.Get(ac)->TraceConnect(
+            "RxWithSeqTsSize",
+            "rx",
+            MakeBoundCallback(&UePacketTraceDb, &pktStats, ueVoiceContainer.Get(1), localAddrs));
     }
 
     /******************* PC5-S messages tracing ********************************/
     AsciiTraceHelper ascii;
-    std::string pc5s_filename = exampleName + "-NrSlPc5SignallingPacketTrace.txt";
     Ptr<OutputStreamWrapper> Pc5SignallingPacketTraceStream =
-        ascii.CreateFileStream(pc5s_filename.c_str());
+        ascii.CreateFileStream("NrSlPc5SignallingPacketTrace.txt");
     *Pc5SignallingPacketTraceStream->GetStream()
         << "time(s)\tnodeId\tTX/RX\tsrcL2Id\tdstL2Id\tmsgType" << std::endl;
-
-    //TODO: Look at the single-link file as to when the logical links are created
-
     for (uint32_t i = 0; i < ueVoiceNetDev.GetN(); ++i)
     {
         Ptr<NrSlUeProse> prose = ueVoiceNetDev.Get(i)->GetObject<NrSlUeProse>();
@@ -1058,30 +869,35 @@ main(int argc, char* argv[])
                                           MakeBoundCallback(&TraceSinkPC5SignallingPacketTrace,
                                                             Pc5SignallingPacketTraceStream,
                                                             ueVoiceNetDev.Get(i)->GetNode()));
-    }
 
+#ifdef HAS_NETSIMULYZER
+        if (i == 0)
+        {
+         // NetSimulyzerLink linking;
+         // linking.m_linkHelper = &linkHelper;
+         // prose->TraceConnectWithoutContext( "PC5SignallingPacketTrace",
+         //                                   MakeCallback(&NetSimulyzerLink::CreateLogicalLinkOnEstablishment,
+         //                                                     &linking));
+        }
+#endif
+    }
 
     /******************* END PC5-S messages tracing **************************/
 
-    // Configure FlowMonitor to get traffic flow statistics
-    FlowMonitorHelper flowmonHelper;
-    NodeContainer endpointNodes;
-    endpointNodes.Add(ueVoiceContainer);
-
-    Ptr<ns3::FlowMonitor> monitor = flowmonHelper.Install(endpointNodes);
-    monitor->SetAttribute("DelayBinWidth", DoubleValue(0.001));
-    monitor->SetAttribute("JitterBinWidth", DoubleValue(0.001));
-    monitor->SetAttribute("PacketSizeBinWidth", DoubleValue(20));
-
-    Simulator::Stop(simTime + Seconds(1.0));
+    Simulator::Stop(simTime);
     Simulator::Run();
 
-    std::cout << "System total Tx packets = " << txPktCounter << std::endl;
-    std::cout << "System total Tx bits = " << txByteCounter * 8 << std::endl;
-    std::cout << "System total Rx packets = " << rxPktCounter << std::endl;
-    std::cout << "System total Rx bits = " << rxByteCounter * 8 << std::endl;
-    std::cout << "System average thput = "
-              << (rxByteCounter * 8) / (simTime - startTrafficTime).GetSeconds() / 1000.0 << " kbps"
+    std::cout << "Total Tx bits = " << txByteCounter * 8 << std::endl;
+    std::cout << "Total Tx packets = " << txPktCounter << std::endl;
+
+    std::cout << "Total Rx bits = " << rxByteCounter * 8 << std::endl;
+    std::cout << "Total Rx packets = " << rxPktCounter << std::endl;
+
+    std::cout << "Avrg thput = "
+              << (rxByteCounter * 8) / (simTime - Seconds(realAppStart)).GetSeconds() / 1000.0
+              << " kbps" << std::endl;
+
+    std::cout << "Average Packet Inter-Reception (PIR) " << pir.GetSeconds() / pirCounter << " sec"
               << std::endl;
 
     /*
@@ -1089,79 +905,10 @@ main(int argc, char* argv[])
      * dump the data store towards the end of the simulation in to a database.
      */
     pktStats.EmptyCache();
+    pscchStats.EmptyCache();
+    psschStats.EmptyCache();
     pscchPhyStats.EmptyCache();
     psschPhyStats.EmptyCache();
-
-    // Print per-flow statistics
-    monitor->CheckForLostPackets();
-    Ptr<Ipv4FlowClassifier> classifier =
-        DynamicCast<Ipv4FlowClassifier>(flowmonHelper.GetClassifier());
-    FlowMonitor::FlowStatsContainer stats = monitor->GetFlowStats();
-
-    std::ofstream outFile;
-    std::string filename = exampleName + "-flowMonitorOutput.txt";
-    outFile.open(filename.c_str(), std::ofstream::out | std::ofstream::trunc);
-    if (!outFile.is_open())
-    {
-        std::cerr << "Can't open file " << filename << std::endl;
-        return 1;
-    }
-
-    outFile.setf(std::ios_base::fixed);
-
-    for (std::map<FlowId, FlowMonitor::FlowStats>::const_iterator i = stats.begin();
-         i != stats.end();
-         ++i)
-    {
-        Ipv4FlowClassifier::FiveTuple t = classifier->FindFlow(i->first);
-        std::stringstream protoStream;
-        protoStream << (uint16_t)t.protocol;
-        if (t.protocol == 6)
-        {
-            protoStream.str("TCP");
-        }
-        if (t.protocol == 17)
-        {
-            protoStream.str("UDP");
-        }
-
-        double appDuration = 0;
-
-        appDuration =
-            simTime.GetSeconds() -
-            startTrafficTime
-                .GetSeconds(); // Some inaccuracy is expected due to randomization of start time.
-
-        outFile << "  Flow " << i->first << " (" << t.sourceAddress << " -> "
-                << t.destinationAddress << ") " << protoStream.str() << "\n";
-        outFile << "    Tx Packets:   " << i->second.txPackets << "\n";
-        outFile << "    Tx Bytes:     " << i->second.txBytes << "\n";
-        outFile << "    Tx Data rate: " << i->second.txBytes * 8.0 / appDuration / 1000
-                << " kbps\n";
-        outFile << "    Rx Packets:   " << i->second.rxPackets << "\n";
-        outFile << "    Rx Bytes:     " << i->second.rxBytes << "\n";
-        if (i->second.rxPackets > 0)
-        {
-            outFile << "    Rx Data rate: " << i->second.rxBytes * 8.0 / appDuration / 1000
-                    << " kbps\n";
-            outFile << "    Mean delay:   "
-                    << 1000 * i->second.delaySum.GetSeconds() / i->second.rxPackets << " ms\n";
-        }
-        else
-        {
-            outFile << "    Throughput:  0 kbps\n";
-            outFile << "    Mean delay:  0 ms\n";
-            outFile << "    Mean jitter: 0 ms\n";
-        }
-    }
-    outFile.close();
-
-    std::cout << "Traffic flows statistics: " << std::endl;
-    std::ifstream f(filename.c_str());
-    if (f.is_open())
-    {
-        std::cout << f.rdbuf();
-    }
 
     Simulator::Destroy();
     return 0;

@@ -70,6 +70,10 @@
 #include "ns3/point-to-point-module.h"
 #include "ns3/stats-module.h"
 
+#ifdef HAS_NETSIMULYZER
+#include <ns3/netsimulyzer-module.h>
+#endif
+
 #include <iomanip>
 
 using namespace ns3;
@@ -514,6 +518,45 @@ main(int argc, char* argv[])
                         NrSlUeProse::RemoteUE);
 
     /*********************** End ProSe configuration ***************************/
+
+    /*********************** Start visualizer hooks ****************************/
+
+  #ifdef HAS_NETSIMULYZER
+    std::string outputFileName = "netsimulyzer-prose-discovery-l3-relay.json";
+    auto orchestrator = CreateObject<netsimulyzer::Orchestrator>(outputFileName);
+    //Nodes are stationary and thus no polling required
+    orchestrator->SetAttribute("PollMobility", BooleanValue(false)); 
+
+    netsimulyzer::NodeConfigurationHelper nodeConfigHelper{orchestrator};
+    nodeConfigHelper.Set("Model", netsimulyzer::models::SMARTPHONE_VALUE);
+    nodeConfigHelper.Set("Scale", DoubleValue(2.0));
+    
+    nodeConfigHelper.Set("Name", StringValue("Relay " + std::to_string(ueVoiceContainer.Get(0)->GetId())));
+    nodeConfigHelper.Install(ueVoiceContainer.Get(0));
+
+    nodeConfigHelper.Set("Name", StringValue("Remote " + std::to_string(ueVoiceContainer.Get(1)->GetId())));
+    nodeConfigHelper.Install(ueVoiceContainer.Get(1));
+
+    //MakeAreaSurroundingNodes(ueVoiceContainer, orchestrator);
+    
+    NodeContainer remotes;
+    remotes.Add(ueVoiceContainer.Get(1));
+    NetDeviceContainer remoteNetDevs;
+    remoteNetDevs.Add(ueVoiceNetDev.Get(1));
+
+    NodeContainer relays;
+    relays.Add(ueVoiceContainer.Get(0));
+    NetDeviceContainer relayNetDevs;
+    relayNetDevs.Add(ueVoiceNetDev.Get(0));
+
+    std::vector<uint32_t> relayDstL2Ids = {relayDstL2Id};
+
+    //NetSimulyzerProseRelayDiscoveryTracerModelB tracerModelB;
+    //tracerModelB.SetUp(orchestrator, remotes, remoteNetDevs, relays, relayNetDevs, relayDstL2Ids);
+  #endif
+
+    /*********************** End visualizer hooks ******************************/
+
 
     // Database setup
     std::string exampleName = simTag + "-" + "nr-prose-discovery-relay";

@@ -2,6 +2,13 @@ set(source_files
     helper/nr-sl-discovery-trace.cc
     helper/nr-sl-prose-helper.cc
     helper/nr-sl-relay-trace.cc
+    helper/visHelper/color-pair.cc
+    helper/visHelper/netsim-prose-direct-discovery-tracer.cc
+    helper/visHelper/netsim-prose-relay-discovery-tracer-modelA.cc
+    helper/visHelper/netsim-prose-relay-discovery-tracer-modelB.cc
+    helper/visHelper/netsim-prose-relay-selection-tracer.cc
+    #helper/visHelper/netsim-prose-tracer-helper.cc
+    helper/visHelper/netsim-prose-direct-link-tracer.cc
     model/nr-sl-discovery-header.cc
     model/nr-sl-pc5-signalling-header.cc
     model/nr-sl-ue-prose.cc
@@ -14,6 +21,13 @@ set(header_files
     helper/nr-sl-discovery-trace.h
     helper/nr-sl-prose-helper.h
     helper/nr-sl-relay-trace.h
+    helper/visHelper/color-pair.h
+    helper/visHelper/netsim-prose-direct-discovery-tracer.h
+    helper/visHelper/netsim-prose-relay-discovery-tracer-modelA.h
+    helper/visHelper/netsim-prose-relay-discovery-tracer-modelB.h
+    helper/visHelper/netsim-prose-relay-selection-tracer.h
+    #helper/visHelper/netsim-prose-tracer-helper.h
+    helper/visHelper/netsim-prose-direct-link-tracer.h
     model/nr-sl-discovery-header.h
     model/nr-sl-pc5-signalling-header.h
     model/nr-sl-ue-prose-direct-link.h
@@ -26,6 +40,14 @@ set(header_files
 set(test_sources
 )
 
+set(additional_libs_to_link "")
+if(HAS_PSC)
+  list(APPEND additional_libs_to_link ${libpsc})
+endif()
+if(HAS_NETSIMULYZER)
+  list(APPEND additional_libs_to_link ${libnetsimulyzer})
+endif()
+
 build_lib(
   LIBNAME nr-prose
   SOURCE_FILES ${source_files}
@@ -34,5 +56,6 @@ build_lib(
     ${liblte}
     ${libinternet-apps}
     ${libnr}
+    ${additional_libs_to_link}
   TEST_SOURCES ${test_sources}
 )
